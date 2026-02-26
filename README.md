@@ -1,2 +1,3 @@
 # ruff-analytics
-Analytics on ruff usage
+
+Analytics on [ruff](https://docs.astral.sh/ruff/) usage.
