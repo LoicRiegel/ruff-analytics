@@ -7,6 +7,10 @@ repos:
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.11.7
+    hooks:
+    -   id: uv-lock
   - repo: local
     hooks:
     -   id: ruff
@@ -14,4 +18,12 @@ repos:
         language: system
         types: [python]
         name: ruff
+        pass_filenames: false
+  - repo: local
+    hooks:
+    -   id: ty
+        entry: uv run ty check --fix
+        language: system
+        types: [python]
+        name: ty
         pass_filenames: false
