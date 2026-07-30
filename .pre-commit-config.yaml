@@ -7,3 +7,11 @@ repos:
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
+  - repo: local
+    hooks:
+    -   id: ruff
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+        name: ruff
+        pass_filenames: false

@@ -1,0 +1,25 @@
+[project]
+name = "ruff-analytics"
+description = "Scripts to gather and analyze ruff usage data"
+version = "0.1.0"
+authors = [{ name = "Loïc Riegel", email = "loic.riegel@outlook.fr" }]
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1,<0.29",
+    "python-dotenv>=1.2.1,<2",
+    "rich>=15.0.0,<16",
+    "typer>=0.27.0",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.16.0,<0.17"]
+
+[project.urls]
+Repository = "https://github.com/LoicRiegel/ruff-analytics"
+
+[project.scripts]
+scrapper = "ruff_analytics.scrapper.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.11.25,<0.12.0"]
+build-backend = "uv_build"
