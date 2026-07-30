@@ -8,7 +8,8 @@ Analytics on [ruff](https://docs.astral.sh/ruff/) usage.
 - Make sure [uv](https://docs.astral.sh/uv/) is installed
 - Create a ``.env`` file and write the GitHub token into it:
   ```sh
-  GITHUB_TOKEN=...
+  GITHUB_TOKEN=
+  RUFF_ANALYTICS_DB=
   ```
 
 ## Scan repositories that contain ruff configuration files
