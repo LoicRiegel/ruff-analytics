@@ -32,7 +32,4 @@ def split_date_range(date_range: DateRange) -> DateRangeSplit:
         raise ValueError(msg)
     mid = date_range.date_from + timedelta(days=(date_range.date_to - date_range.date_from).days // 2)
     mid_day_after = mid + timedelta(days=1)
-    return DateRangeSplit(
-        DateRange(date_range.date_from, mid),
-        DateRange(mid_day_after, date_range.date_to),
-    )
+    return DateRangeSplit(DateRange(date_range.date_from, mid), DateRange(mid_day_after, date_range.date_to))

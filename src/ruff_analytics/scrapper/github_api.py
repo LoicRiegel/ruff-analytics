@@ -39,27 +39,19 @@ def make_pyproject_query(date_range: DateRange) -> str:
 
 
 def _headers() -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-        "Accept": "application/vnd.github+json",
-    }
+    return {"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json"}
 
 
 async def _fetch_page(client: AsyncClient, query: str, page: int) -> dict:
     resp = await client.get(
-        _GITHUB_SEARCH_URL,
-        params={"q": query, "per_page": _RESULTS_PER_PAGE, "page": page},
-        headers=_headers(),
+        _GITHUB_SEARCH_URL, params={"q": query, "per_page": _RESULTS_PER_PAGE, "page": page}, headers=_headers()
     )
     resp.raise_for_status()
     return resp.json()
 
 
 async def _fetch_all_items(
-    client: AsyncClient,
-    query: str,
-    total_count: int,
-    first_page_items: list[dict],
+    client: AsyncClient, query: str, total_count: int, first_page_items: list[dict]
 ) -> list[dict]:
     items = list(first_page_items)
     num_pages = (total_count + _RESULTS_PER_PAGE - 1) // _RESULTS_PER_PAGE
@@ -80,6 +72,6 @@ def _save_configs(session: Session, items: list[dict], discovered_at: datetime) 
                 branch=repo["default_branch"],
                 commit_sha=item["sha"],
                 discovered_at=discovered_at,
-            ),
+            )
         )
     session.commit()

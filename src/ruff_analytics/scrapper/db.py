@@ -17,18 +17,10 @@ class Base(DeclarativeBase):  # noqa: D101
 
 
 type ConfigType = Literal[
-    "ruff.toml",
-    ".ruff.toml",
-    "pyproject.toml",  # only those containing a [tool.ruff] section
+    "ruff.toml", ".ruff.toml", "pyproject.toml"  # only those containing a [tool.ruff] section
 ]
 
-type WindowStatus = Literal[
-    "pending",
-    "done",
-    "needs_split",
-    "split",
-    "error",
-]
+type WindowStatus = Literal["pending", "done", "needs_split", "split", "error"]
 
 
 class ScanWindow(Base):
@@ -53,7 +45,7 @@ def create_window(session: Session, config_type: ConfigType, date_range: DateRan
             window_status="pending",
             result_count=None,
             created_at=datetime.now(tz=UTC),
-        ),
+        )
     )
 
 
@@ -92,10 +84,7 @@ def next_pending_window(session: Session) -> ScanWindow | None:
 
 class Config(Base):
     __tablename__ = "configs"
-    __table_args__ = (
-        Index("idx_configs_type", "config_type"),
-        Index("idx_configs_discovered_at", "discovered_at"),
-    )
+    __table_args__ = (Index("idx_configs_type", "config_type"), Index("idx_configs_discovered_at", "discovered_at"))
 
     repo_owner: Mapped[str] = mapped_column(String, primary_key=True)
     repo_name: Mapped[str] = mapped_column(String, primary_key=True)
@@ -123,5 +112,5 @@ def save_config(
             branch=branch,
             commit_sha=commit_sha,
             discovered_at=discovered_at,
-        ),
+        )
     )

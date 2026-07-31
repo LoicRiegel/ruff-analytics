@@ -46,14 +46,14 @@ def _save_configs(session: Session, items: list[dict], discovered_at: datetime) 
                 branch=repo["default_branch"],
                 commit_sha=item["sha"],
                 discovered_at=discovered_at,
-            ),
+            )
         )
     session.commit()
 
 
 async def _process_window(client: AsyncClient, session: Session, window: ScanWindow) -> None:
     config_type = window.config_type
-    query = _build_query(config_type, cast("date", window.date_from), cast("date", window.date_to))
+    query = _build_query(config_type, window.date_from, window.date_to)
 
     first_page = await _fetch_page(client, query, page=1)
     total_count: int = first_page["total_count"]

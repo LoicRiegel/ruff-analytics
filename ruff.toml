@@ -2,7 +2,15 @@ line-length = 120
 
 [lint]
 select = ["ALL"]
-ignore = ["D203", "D213", "CPY"]
+ignore = ["D203", "D213", "CPY", "COM812"]
 fixable = ["ALL"]
 unfixable = []
 future-annotations = true
+
+[lint.isort]
+split-on-trailing-comma = false
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = true
