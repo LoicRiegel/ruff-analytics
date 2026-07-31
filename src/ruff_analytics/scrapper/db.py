@@ -1,23 +1,23 @@
-"""Database models."""
-
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
 from sqlalchemy import Date, DateTime, Index, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-from ruff_analytics.scrapper.date_range import DateRange, DateRangeSplit
-
 if TYPE_CHECKING:
-    from datetime import date, datetime
+    from datetime import date
+
+    from ruff_analytics.scrapper.date_range import DateRange, DateRangeSplit
 
 
-class Base(DeclarativeBase):  # noqa: D101
+class Base(DeclarativeBase):
     pass
 
 
 type ConfigType = Literal[
-    "ruff.toml", ".ruff.toml", "pyproject.toml"  # only those containing a [tool.ruff] section
+    "pyproject.toml",  # only those containing a [tool.ruff] section
+    "ruff.toml",
+    ".ruff.toml",
 ]
 
 type WindowStatus = Literal["pending", "done", "needs_split", "split", "error"]
@@ -36,7 +36,6 @@ class ScanWindow(Base):
 
 
 def create_window(session: Session, config_type: ConfigType, date_range: DateRange) -> None:
-    """Create a new scan window with status PENDING."""
     session.add(
         ScanWindow(
             config_type=config_type,
@@ -50,26 +49,22 @@ def create_window(session: Session, config_type: ConfigType, date_range: DateRan
 
 
 def mark_window_as_done(session: Session, window_id: int, result_count: int) -> None:
-    """Set the status of a scan window to DONE."""
     window = cast("ScanWindow", session.get(ScanWindow, window_id))
     window.window_status = "done"
     window.result_count = result_count
 
 
 def mark_window_as_error(session: Session, window_id: int) -> None:
-    """Set the status of a scan window to ERROR."""
     window = cast("ScanWindow", session.get(ScanWindow, window_id))
     window.window_status = "error"
 
 
 def mark_window_as_needs_split(session: Session, window_id: int) -> None:
-    """Set the status of a scan window to NEEDS_SPLIT."""
     window = cast("ScanWindow", session.get(ScanWindow, window_id))
     window.window_status = "needs_split"
 
 
 def split_window(session: Session, window_id: int, date_range_split: DateRangeSplit) -> None:
-    """Set the status of a scan window to SPLIT and adds new windows to scan with status PENDING."""
     window = cast("ScanWindow", session.get(ScanWindow, window_id))
     config_type = window.config_type
     window.window_status = "split"
@@ -77,9 +72,8 @@ def split_window(session: Session, window_id: int, date_range_split: DateRangeSp
     create_window(session, config_type, date_range_split.second)
 
 
-def next_pending_window(session: Session) -> ScanWindow | None:
-    """Return the next pending window."""
-    return session.query(ScanWindow).filter_by(window_status="pending").first()
+def next_window_to_process(session: Session) -> ScanWindow | None:
+    return session.query(ScanWindow).filter(ScanWindow.window_status.in_(["pending", "needs_split"])).first()
 
 
 class Config(Base):

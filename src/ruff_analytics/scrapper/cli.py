@@ -1,9 +1,11 @@
 """Command-line interface for the ruff configuration scraper."""
 
 import asyncio
+import logging
 import os
 
 from dotenv import load_dotenv
+from rich.logging import RichHandler
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from typer import Typer
@@ -16,6 +18,10 @@ DB_URL_ENV_VAR = "RUFF_ANALYTICS_DB"
 app = Typer(add_completion=False)
 
 
+def set_up_logging() -> None:
+    logging.basicConfig(level=logging.DEBUG, handlers=[RichHandler(rich_tracebacks=True)])
+
+
 @app.command(help="Initialize the scrapping process and populate the database with initial data")
 def init() -> None:
     """Initialize the scrapping.
@@ -23,6 +29,7 @@ def init() -> None:
     Perform the first API call to populate the database with the first data.
     """
     load_dotenv()
+    set_up_logging()
     engine = create_engine(os.environ[DB_URL_ENV_VAR])
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
@@ -38,7 +45,8 @@ def start() -> None:
     The state of the scrapping are also saved to allow to be paused and resumed.
     """
     load_dotenv()
-    engine = create_engine(os.environ[DB_URL_ENV_VAR])
+    set_up_logging()
+    engine = create_engine(os.environ[DB_URL_ENV_VAR], echo=False)
     with Session(engine) as session:
         asyncio.run(run_scraper(session))
 

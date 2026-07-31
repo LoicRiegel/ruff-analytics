@@ -2,13 +2,26 @@ line-length = 120
 
 [lint]
 select = ["ALL"]
-ignore = ["D203", "D213", "CPY", "COM812"]
+ignore = [
+    "D100",
+    "D101",
+    "D103",
+    "D105",
+    "D107",
+    "D203",
+    "D213",
+    "CPY",
+    "COM812",
+]
 fixable = ["ALL"]
 unfixable = []
 future-annotations = true
 
 [lint.isort]
 split-on-trailing-comma = false
+
+[lint.pylint]
+max-args = 7
 
 [format]
 quote-style = "double"
