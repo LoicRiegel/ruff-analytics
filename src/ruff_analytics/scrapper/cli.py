@@ -19,7 +19,8 @@ app = Typer(add_completion=False)
 
 
 def set_up_logging() -> None:
-    logging.basicConfig(level=logging.DEBUG, handlers=[RichHandler(rich_tracebacks=True)])
+    logging.basicConfig(level=logging.WARNING, handlers=[RichHandler(rich_tracebacks=True)])
+    logging.getLogger("ruff_analytics").setLevel(logging.DEBUG)
 
 
 @app.command(help="Initialize the scrapping process and populate the database with initial data")

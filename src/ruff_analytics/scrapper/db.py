@@ -1,13 +1,12 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
 from sqlalchemy import Date, DateTime, Index, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-if TYPE_CHECKING:
-    from datetime import date
+from ruff_analytics.scrapper.config_type import ConfigType  # noqa: TC001 (needed by sqlalchemy)
 
-    from ruff_analytics.scrapper.config_type import ConfigType
+if TYPE_CHECKING:
     from ruff_analytics.scrapper.date_range import DateRange, DateRangeSplit
 
 
