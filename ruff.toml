@@ -21,7 +21,7 @@ future-annotations = true
 split-on-trailing-comma = false
 
 [lint.pylint]
-max-args = 7
+max-args = 8
 
 [format]
 quote-style = "double"

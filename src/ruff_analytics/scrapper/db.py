@@ -7,18 +7,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 if TYPE_CHECKING:
     from datetime import date
 
+    from ruff_analytics.scrapper.config_type import ConfigType
     from ruff_analytics.scrapper.date_range import DateRange, DateRangeSplit
 
 
 class Base(DeclarativeBase):
     pass
 
-
-type ConfigType = Literal[
-    "pyproject.toml",  # only those containing a [tool.ruff] section
-    "ruff.toml",
-    ".ruff.toml",
-]
 
 type WindowStatus = Literal["pending", "done", "needs_split", "split", "error"]
 
@@ -93,6 +88,7 @@ def save_config(
     session: Session,
     repo_owner: str,
     repo_name: str,
+    config_type: ConfigType,
     config_path: str,
     branch: str,
     commit_sha: str,
@@ -102,6 +98,7 @@ def save_config(
         Config(
             repo_owner=repo_owner,
             repo_name=repo_name,
+            config_type=config_type,
             config_path=config_path,
             branch=branch,
             commit_sha=commit_sha,

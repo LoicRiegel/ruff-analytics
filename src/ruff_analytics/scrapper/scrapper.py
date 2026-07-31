@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from httpx import AsyncClient
 
+from ruff_analytics.scrapper.config_type import parse_config_type
 from ruff_analytics.scrapper.date_range import DateRange, split_date_range
 from ruff_analytics.scrapper.db import (
     ScanWindow,
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 START_DATE = date(2022, 1, 1)  # this is the year ruff was released
-END_DATE = datetime.now(tz=UTC).date()
+
 MAX_RESULTS_PER_RESPONSE = 1000
 
 
@@ -35,13 +36,19 @@ async def init_scrapper(session: Session) -> None:
     create_window(session, "ruff.toml", date_range)
     create_window(session, ".ruff.toml", date_range)
     session.commit()
+    logger.info("Ready to start the scrapping...")
 
 
 async def run_scraper(session: Session) -> None:
     """Start or resume scraping — processes all pending windows until none remain."""
+    logger.info("Resuming the scrapping... (exit with CTRL+C)")
     async with AsyncClient() as client:
-        while window := next_window_to_process(session):
-            await _process_window(client, session, window)
+        try:
+            while window := next_window_to_process(session):
+                await _process_window(client, session, window)
+                session.commit()
+        except KeyboardInterrupt:
+            logger.info("Scraping interrupted (can be resumed later)")
 
 
 def _save_config(session: Session, data: dict[str, Any]) -> None:
@@ -57,6 +64,7 @@ def _save_config(session: Session, data: dict[str, Any]) -> None:
             session,
             repo_owner=repo_owner,
             repo_name=repo_name,
+            config_type=parse_config_type(config_path),
             config_path=config_path,
             branch=branch,
             commit_sha=commit_sha,

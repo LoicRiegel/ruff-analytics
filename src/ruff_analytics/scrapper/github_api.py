@@ -1,18 +1,14 @@
 import asyncio
 import os
 import time
-from datetime import UTC, date, datetime
-from http import HTTPStatus
 from typing import TYPE_CHECKING, assert_never
 
 if TYPE_CHECKING:
     from httpx import AsyncClient, Request, Response
 
+    from ruff_analytics.scrapper.config_type import ConfigType
     from ruff_analytics.scrapper.date_range import DateRange
-    from ruff_analytics.scrapper.db import ConfigType
 
-START_DATE = date(2022, 1, 1)  # this is the year ruff was released
-END_DATE = datetime.now(tz=UTC).date()
 
 GITHUB_SEARCH_URL = "https://api.github.com/search/code"
 RESULTS_PER_PAGE = 100
@@ -31,7 +27,7 @@ async def send_request(client: AsyncClient, request: Request) -> Response:
     Retry when rate limitations are hit.
     """
     resp = await client.send(request)
-    if resp.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+    if resp.is_client_error:
         reset = resp.headers.get("x-ratelimit-reset")
         wait = max(int(reset) - time.time(), 1) if reset else 60
         await asyncio.sleep(wait)
@@ -41,8 +37,10 @@ async def send_request(client: AsyncClient, request: Request) -> Response:
 
 def _build_query(config_type: ConfigType, date_range: DateRange) -> str:
     match config_type:
-        case "ruff.toml" | ".ruff.toml":
+        case "ruff.toml":
             return _build_ruff_query(date_range)
+        case ".ruff.toml":
+            return _build_dot_ruff_query(date_range)
         case "pyproject.toml":
             return _build_pyproject_query(date_range)
         case _:
@@ -50,7 +48,11 @@ def _build_query(config_type: ConfigType, date_range: DateRange) -> str:
 
 
 def _build_ruff_query(date_range: DateRange) -> str:
-    return f"filename:ruff.toml OR filename:.ruff.toml created:{date_range.date_from}..{date_range.date_to}"
+    return f"filename:ruff.toml created:{date_range.date_from}..{date_range.date_to}"
+
+
+def _build_dot_ruff_query(date_range: DateRange) -> str:
+    return f"filename:.ruff.toml created:{date_range.date_from}..{date_range.date_to}"
 
 
 def _build_pyproject_query(date_range: DateRange) -> str:

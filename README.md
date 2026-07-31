@@ -6,19 +6,24 @@ Analytics on [ruff](https://docs.astral.sh/ruff/) usage.
 
 - Clone the project
 - Make sure [uv](https://docs.astral.sh/uv/) is installed
-- Create a ``.env`` file and write the GitHub token into it:
+- Create a `.env` file with the required environment variables:
   ```sh
   GITHUB_TOKEN=
   RUFF_ANALYTICS_DB=
   ```
 
-## Scan repositories that contain ruff configuration files
+## Run the scraper
 
-The [discovery](./discovery.py) script discovers all public repositories on GitHub that contain a ruff configuration file: either `ruff.toml`, `.ruff.toml`, or `pyproject.toml` with a `[tool.ruff]` section.
+The package exposes a CLI named `scrapper`.
 
-The script uses the GitHub search API. To work around the API's 1000-result limit, it splits the search into multiple requests using the repository creation time as a partition key. Results are saved to a SQLite database.
+1. Initialize the database and create initial scan windows:
+   ```sh
+   uv run scrapper init
+   ```
 
-Run it with:
-```sh
-uv run discovery.py
-```
+2. Start (or resume) scraping:
+   ```sh
+   uv run scrapper start
+   ```
+
+The scraper searches public repositories for ruff configuration files (`ruff.toml`, `.ruff.toml`, and `pyproject.toml` containing `[tool.ruff]`) and stores metadata in the configured database.

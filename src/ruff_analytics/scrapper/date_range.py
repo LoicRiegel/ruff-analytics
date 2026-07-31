@@ -21,7 +21,7 @@ def split_date_range(date_range: DateRange) -> DateRangeSplit:
 
     :raises ValueError: if the dates cannot be split.
     """
-    if date_range.date_from >= date_range.date_to:
+    if date_range.date_from > date_range.date_to:
         msg = "Cannot split dates: date_from is > than date_to"
         raise ValueError(msg)
     if date_range.date_from == date_range.date_to:
