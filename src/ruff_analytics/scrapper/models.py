@@ -15,6 +15,7 @@ class _Repository(BaseModel):
     id: int
     name: str
     owner: _Owner
+    fork: bool
 
 
 class DiscoveredConfigResult(BaseModel):

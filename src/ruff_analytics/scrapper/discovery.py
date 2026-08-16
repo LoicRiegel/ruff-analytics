@@ -55,6 +55,11 @@ def _save_configs(
     session: Session, configs: list[DiscoveredConfigResult], config_type: ConfigType, discovered_at: datetime
 ) -> None:
     for config in configs:
+        if config.repository.fork:
+            logger.debug(
+                "Skipping repository %s/%s because it is a fork", config.repository.owner, config.repository.name
+            )
+            continue
         save_repo(
             session,
             repo_id=config.repository.id,
