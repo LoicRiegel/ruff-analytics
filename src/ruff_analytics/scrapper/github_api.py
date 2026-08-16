@@ -57,8 +57,7 @@ def _build_dot_ruff_query(date_range: DateRange) -> str:
 
 def _build_pyproject_query(date_range: DateRange) -> str:
     return (
-        "[tool.ruff] in:file filename:pyproject.toml extension:toml "
-        f"created:{date_range.date_from}..{date_range.date_to}"
+        f"tool.ruff in:file filename:pyproject.toml extension:toml created:{date_range.date_from}..{date_range.date_to}"
     )
 
 

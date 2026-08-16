@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Literal
 
 type ConfigType = Literal[
-    "pyproject.toml",  # only those containing a [tool.ruff] section
+    "pyproject.toml",  # only those containing a tool.ruff section
     "ruff.toml",
     ".ruff.toml",
 ]

@@ -26,4 +26,4 @@ The package exposes a CLI named `scrapper`.
    uv run scrapper start
    ```
 
-The scraper searches public repositories for ruff configuration files (`ruff.toml`, `.ruff.toml`, and `pyproject.toml` containing `[tool.ruff]`) and stores metadata in the configured database.
+The scraper searches public repositories for ruff configuration files (`ruff.toml`, `.ruff.toml`, and `pyproject.toml` containing `tool.ruff`) and stores metadata in the configured database.
