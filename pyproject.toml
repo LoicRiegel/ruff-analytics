@@ -6,6 +6,7 @@ authors = [{ name = "Loïc Riegel", email = "loic.riegel@outlook.fr" }]
 requires-python = ">=3.14"
 dependencies = [
     "httpx>=0.28.1,<0.29",
+    "pydantic>=2,<3",
     "python-dotenv>=1.2.1,<2",
     "rich>=15.0.0,<16",
     "sqlalchemy>=2.0.51,<3",

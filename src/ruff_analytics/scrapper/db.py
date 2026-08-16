@@ -1,12 +1,14 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
-from sqlalchemy import DateTime, Index, Integer, String
+from sqlalchemy import DateTime, Index, Integer, String, Text, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from ruff_analytics.scrapper.config_type import ConfigType  # noqa: TC001 (needed by sqlalchemy)
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ruff_analytics.scrapper.size_range import SizeRange, SizeRangeSplit
 
 
@@ -107,3 +109,33 @@ def save_config(  # noqa: PLR0913, PLR0917
             discovered_at=discovered_at,
         )
     )
+
+
+class Content(Base):
+    __tablename__ = "contents"
+
+    repo_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    config_path: Mapped[str] = mapped_column(String, primary_key=True)
+    blob_sha: Mapped[str] = mapped_column(String(40), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    downloaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+def save_content(
+    session: Session, repo_id: int, config_path: str, blob_sha: str, content: str, downloaded_at: datetime
+) -> None:
+    session.merge(
+        Content(
+            repo_id=repo_id, config_path=config_path, blob_sha=blob_sha, content=content, downloaded_at=downloaded_at
+        )
+    )
+
+
+def configs_to_download(session: Session) -> Sequence[Config]:
+    """Return the configs that are not downloaded yet, or whose downloaded content is out of date."""
+    stmt = (
+        select(Config)
+        .outerjoin(Content, (Config.repo_id == Content.repo_id) & (Config.config_path == Content.config_path))
+        .where((Content.blob_sha.is_(None)) | (Content.blob_sha != Config.blob_sha))
+    )
+    return session.execute(stmt).scalars().all()

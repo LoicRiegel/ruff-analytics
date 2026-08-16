@@ -3,6 +3,8 @@ import os
 import time
 from typing import TYPE_CHECKING, assert_never
 
+from ruff_analytics.scrapper.models import DiscoveryResult, DownloadResult
+
 if TYPE_CHECKING:
     from httpx import AsyncClient, Request, Response
 
@@ -14,14 +16,36 @@ GITHUB_SEARCH_URL = "https://api.github.com/search/code"
 RESULTS_PER_PAGE = 100
 
 
-def build_request(client: AsyncClient, config_type: ConfigType, size_range: SizeRange, page: int) -> Request:
+async def discover_configs(
+    client: AsyncClient, config_type: ConfigType, size_range: SizeRange, page: int
+) -> DiscoveryResult:
+    """Discover the files of the provided config type, within the provided size range and in the given page.
+
+    Retry when rate limitations are hit.
+
+    """
     query = _build_query(config_type, size_range)
-    return client.build_request(
+    request = client.build_request(
         "GET", GITHUB_SEARCH_URL, params={"q": query, "per_page": RESULTS_PER_PAGE, "page": page}, headers=_headers()
     )
+    response = await _send_request(client, request)
+    response.raise_for_status()
+    return DiscoveryResult.model_validate(response.json())
 
 
-async def send_request(client: AsyncClient, request: Request) -> Response:
+async def download_blob(client: AsyncClient, repo_id: int, blob_sha: str) -> DownloadResult:
+    """Download a git blob's content and return it decoded as text.
+
+    :raises HTTPStatusError: if the request fails.
+    """
+    url = f"https://api.github.com/repositories/{repo_id}/git/blobs/{blob_sha}"
+    request = client.build_request("GET", url, headers=_headers())
+    response = await _send_request(client, request)
+    response.raise_for_status()
+    return DownloadResult.model_validate(response.json())
+
+
+async def _send_request(client: AsyncClient, request: Request) -> Response:
     """Send a request and return the response.
 
     Retry when rate limitations are hit.

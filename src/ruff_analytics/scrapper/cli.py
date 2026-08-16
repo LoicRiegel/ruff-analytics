@@ -11,10 +11,12 @@ from sqlalchemy.orm import Session
 from typer import Typer
 
 from ruff_analytics.scrapper.db import Base
-from ruff_analytics.scrapper.scrapper import init_scrapper, run_scraper
+from ruff_analytics.scrapper.discovery import init_discovery, run_discovery
+from ruff_analytics.scrapper.download import run_download
 
 DB_URL_ENV_VAR = "RUFF_ANALYTICS_DB"
 
+logger = logging.getLogger(__name__)
 app = Typer(add_completion=False)
 
 
@@ -35,7 +37,8 @@ def init() -> None:
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with Session(engine) as session:
-        asyncio.run(init_scrapper(session))
+        asyncio.run(init_discovery(session))
+    logger.info("Ready to start the scrapping...")
 
 
 @app.command(help="Start or resume scraping to collect ruff configuration files and store metadata")
@@ -48,8 +51,16 @@ def start() -> None:
     load_dotenv()
     set_up_logging()
     engine = create_engine(os.environ[DB_URL_ENV_VAR], echo=False)
-    with Session(engine) as session:
-        asyncio.run(run_scraper(session))
+    logger.info("Resuming the scrapping... (exit with CTRL+C)")
+    with Session(engine) as discovery_session, Session(engine) as download_session:
+        try:
+            asyncio.run(_start_discovery_and_download(discovery_session, download_session))
+        except KeyboardInterrupt:
+            logger.info("Scraping interrupted (can be resumed later)")
+
+
+async def _start_discovery_and_download(discovery_session: Session, download_session: Session) -> None:
+    await asyncio.gather(run_discovery(discovery_session), run_download(download_session))
 
 
 if __name__ == "__main__":
