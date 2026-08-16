@@ -21,10 +21,9 @@ logger = logging.getLogger(__name__)
 app = Typer(add_completion=False)
 
 
-def set_up_logging(*, debug: bool) -> None:
+def set_up_logging() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(message)s", handlers=[RichHandler(rich_tracebacks=True)])
-    level = logging.DEBUG if debug else logging.INFO
-    logging.getLogger("ruff_analytics").setLevel(level)
+    logging.getLogger("ruff_analytics").setLevel(logging.DEBUG)
 
 
 def _create_engine(db_url: str) -> Engine:
@@ -35,13 +34,13 @@ def _create_engine(db_url: str) -> Engine:
 
 
 @app.command(help="Initialize the scrapping process and populate the database with initial data")
-def init(debug: bool = False) -> None:  # noqa: FBT001, FBT002
+def init() -> None:
     """Initialize the scrapping.
 
     Perform the first API call to populate the database with the first data.
     """
     load_dotenv()
-    set_up_logging(debug=debug)
+    set_up_logging()
     engine = _create_engine(os.environ[DB_URL_ENV_VAR])
     logger.debug("Clean database")
     Base.metadata.drop_all(engine)
@@ -54,14 +53,14 @@ def init(debug: bool = False) -> None:  # noqa: FBT001, FBT002
 
 
 @app.command(help="Start or resume scraping to collect ruff configuration files and store metadata")
-def start(debug: bool = False) -> None:  # noqa: FBT001, FBT002
+def start() -> None:
     """Start (or resume) the scrapping.
 
     Store all ruff configuration files in a database.
     The state of the scrapping are also saved to allow to be paused and resumed.
     """
     load_dotenv()
-    set_up_logging(debug=debug)
+    set_up_logging()
     engine = _create_engine(os.environ[DB_URL_ENV_VAR])
     rich.print("Resuming the scrapping... (exit with CTRL+C)")
     with Session(engine) as discovery_session, Session(engine) as download_session:
