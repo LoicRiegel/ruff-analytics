@@ -5,16 +5,6 @@ from typing import TYPE_CHECKING
 
 from httpx import AsyncClient, HTTPStatusError
 
-from ruff_analytics.scrapper.db import (
-    ScanWindow,
-    create_window,
-    mark_window_as_done,
-    mark_window_as_error,
-    next_window_to_process,
-    save_config,
-    save_repo,
-    split_window,
-)
 from ruff_analytics.scrapper.github_api import RESULTS_PER_PAGE, discover_configs
 from ruff_analytics.scrapper.size_range import SizeRange, split_size_range
 
@@ -22,9 +12,8 @@ if TYPE_CHECKING:
     import asyncio
     from datetime import datetime
 
-    from sqlalchemy.orm import Session
-
     from ruff_analytics.scrapper.config_type import ConfigType
+    from ruff_analytics.scrapper.db import ScanWindow, ScrapperRepository
     from ruff_analytics.scrapper.models import DiscoveredConfigResult
 
 logger = logging.getLogger(__name__)
@@ -32,29 +21,34 @@ logger = logging.getLogger(__name__)
 MAX_RESULTS_PER_RESPONSE = 1000
 
 
-async def init_discovery(session: Session) -> None:
+async def init_discovery(repository: ScrapperRepository) -> None:
     """Probe GitHub once per query type and insert initial windows. Call only once."""
     upper_size_range = SizeRange(20_001, 1_000_000)
     main_size_range = SizeRange(0, 20_000)
     for size_range in (upper_size_range, main_size_range):
-        create_window(session, "PYPROJECT_TOML_WITH_RUFF", size_range)
-        create_window(session, "PYPROJECT_TOML_WITH_TY", size_range)
-        create_window(session, "RUFF_TOML", size_range)
-        create_window(session, "TY_TOML", size_range)
-    session.commit()
+        repository.create_window("PYPROJECT_TOML_WITH_RUFF", size_range)
+        repository.create_window("PYPROJECT_TOML_WITH_TY", size_range)
+        repository.create_window("RUFF_TOML", size_range)
+        repository.create_window("TY_TOML", size_range)
 
 
-async def run_discovery(session: Session, trigger_download_event: asyncio.Event) -> None:
+async def run_discovery(
+    repository: ScrapperRepository, trigger_download_event: asyncio.Event, discovery_done_event: asyncio.Event
+) -> None:
     """Start or resume discovery — processes all pending windows until none remain."""
     async with AsyncClient() as client:
-        while window := next_window_to_process(session):
-            await _process_window(client, session, window)
-            session.commit()
+        while window := repository.next_window_to_process():
+            await _process_window(client, repository, window)
             trigger_download_event.set()
+    discovery_done_event.set()
+    logger.info("Discovery is done")
 
 
 def _save_configs(
-    session: Session, configs: list[DiscoveredConfigResult], config_type: ConfigType, discovered_at: datetime
+    repository: ScrapperRepository,
+    configs: list[DiscoveredConfigResult],
+    config_type: ConfigType,
+    discovered_at: datetime,
 ) -> None:
     for config in configs:
         if config.repository.fork:
@@ -62,14 +56,10 @@ def _save_configs(
                 "Skipping repository %s/%s because it is a fork", config.repository.owner, config.repository.name
             )
             continue
-        save_repo(
-            session,
-            repo_id=config.repository.id,
-            repo_owner=config.repository.owner.login,
-            repo_name=config.repository.name,
+        repository.save_repo(
+            repo_id=config.repository.id, repo_owner=config.repository.owner.login, repo_name=config.repository.name
         )
-        save_config(
-            session,
+        repository.save_config(
             repo_id=config.repository.id,
             config_type=config_type,
             config_path=config.path,
@@ -79,7 +69,7 @@ def _save_configs(
         )
 
 
-async def _process_window(client: AsyncClient, session: Session, window: ScanWindow) -> None:
+async def _process_window(client: AsyncClient, repository: ScrapperRepository, window: ScanWindow) -> None:
     logger.debug("Processing window %s - %s: %s", str(window.size_from), str(window.size_to), window.window_status)
     size_range = SizeRange(window.size_from, window.size_to)
     try:
@@ -91,7 +81,7 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
             window.size_to,
             e.response.status_code,
         )
-        mark_window_as_error(session, window.id)
+        repository.mark_window_as_error(window.id)
         return
     if result.total_count > MAX_RESULTS_PER_RESPONSE:
         try:
@@ -103,7 +93,7 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
                 window.size_to,
                 result.total_count,
             )
-            mark_window_as_error(session, window.id)
+            repository.mark_window_as_error(window.id)
         else:
             logger.info(
                 "Discovery: window %d - %d needs to be split (total count %d)",
@@ -111,14 +101,17 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
                 window.size_to,
                 result.total_count,
             )
-            split_window(session, window.id, size_range_split)
+            repository.split_window(window.id, size_range_split)
         return
     logger.debug(
         "Discovery: window %d - %d is ready (total count %d)", window.size_from, window.size_to, result.total_count
     )
-    _save_configs(session, result.items, window.config_type, result.discovered_at)
+    _save_configs(repository, result.items, window.config_type, result.discovered_at)
     num_pages = (result.total_count + RESULTS_PER_PAGE - 1) // RESULTS_PER_PAGE
     for page in range(2, num_pages + 1):
+        logger.debug(
+            "Discovery: fetching page %d/%d for window %d - %d", page, num_pages, window.size_from, window.size_to
+        )
         try:
             result = await discover_configs(client, window.config_type, size_range, page=page)
         except HTTPStatusError as e:
@@ -128,13 +121,13 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
                 window.size_to,
                 e.response.status_code,
             )
-            mark_window_as_error(session, window.id)
+            repository.mark_window_as_error(window.id)
             return
-        _save_configs(session, result.items, window.config_type, result.discovered_at)
+        _save_configs(repository, result.items, window.config_type, result.discovered_at)
     logger.info(
         "Discovery: saved configurations for window %d - %d (total count %d)",
         window.size_from,
         window.size_to,
         result.total_count,
     )
-    mark_window_as_done(session, window.id, result.total_count)
+    repository.mark_window_as_done(window.id, result.total_count)

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import time
 from typing import TYPE_CHECKING, assert_never
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
     from ruff_analytics.scrapper.config_type import ConfigType
     from ruff_analytics.scrapper.size_range import SizeRange
 
+logger = logging.getLogger(__name__)
 
 GITHUB_SEARCH_URL = "https://api.github.com/search/code"
 RESULTS_PER_PAGE = 100
@@ -54,6 +56,7 @@ async def _send_request(client: AsyncClient, request: Request) -> Response:
     if resp.is_client_error:
         reset = resp.headers.get("x-ratelimit-reset")
         wait = max(int(reset) - time.time(), 1) if reset else 60
+        logger.debug("Rate limited on %s, waiting %.0fs before retrying", request.url, wait)
         await asyncio.sleep(wait)
         resp = await client.send(request)
     return resp

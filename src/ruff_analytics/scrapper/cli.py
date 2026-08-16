@@ -7,11 +7,11 @@ import os
 import rich
 from dotenv import load_dotenv
 from rich.logging import RichHandler
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 from typer import Typer
 
-from ruff_analytics.scrapper.db import Base
+from ruff_analytics.scrapper.db import Base, ScrapperRepository
 from ruff_analytics.scrapper.discovery import init_discovery, run_discovery
 from ruff_analytics.scrapper.download import run_download
 
@@ -27,6 +27,13 @@ def set_up_logging(*, debug: bool) -> None:
     logging.getLogger("ruff_analytics").setLevel(level)
 
 
+def _create_engine(db_url: str) -> Engine:
+    engine = create_engine(db_url, connect_args={"timeout": 5})
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA journal_mode=WAL"))
+    return engine
+
+
 @app.command(help="Initialize the scrapping process and populate the database with initial data")
 def init(debug: bool = False) -> None:  # noqa: FBT001, FBT002
     """Initialize the scrapping.
@@ -35,14 +42,14 @@ def init(debug: bool = False) -> None:  # noqa: FBT001, FBT002
     """
     load_dotenv()
     set_up_logging(debug=debug)
-    engine = create_engine(os.environ[DB_URL_ENV_VAR])
+    engine = _create_engine(os.environ[DB_URL_ENV_VAR])
     logger.debug("Clean database")
     Base.metadata.drop_all(engine)
     logger.debug("Create database")
     Base.metadata.create_all(engine)
     logger.debug("Initialize database")
     with Session(engine) as session:
-        asyncio.run(init_discovery(session))
+        asyncio.run(init_discovery(ScrapperRepository(session)))
     rich.print("Scrapper initialization done")
 
 
@@ -55,19 +62,25 @@ def start(debug: bool = False) -> None:  # noqa: FBT001, FBT002
     """
     load_dotenv()
     set_up_logging(debug=debug)
-    engine = create_engine(os.environ[DB_URL_ENV_VAR], echo=False)
+    engine = _create_engine(os.environ[DB_URL_ENV_VAR])
     rich.print("Resuming the scrapping... (exit with CTRL+C)")
     with Session(engine) as discovery_session, Session(engine) as download_session:
+        discovery_repository = ScrapperRepository(discovery_session)
+        download_repository = ScrapperRepository(download_session)
         try:
-            asyncio.run(_start_discovery_and_download(discovery_session, download_session))
+            asyncio.run(_start_discovery_and_download(discovery_repository, download_repository))
         except KeyboardInterrupt:
             rich.print("Scraping interrupted (can be resumed later)")
 
 
-async def _start_discovery_and_download(discovery_session: Session, download_session: Session) -> None:
+async def _start_discovery_and_download(
+    discovery_repository: ScrapperRepository, download_repository: ScrapperRepository
+) -> None:
     trigger_download_event = asyncio.Event()
+    discovery_done_event = asyncio.Event()
     await asyncio.gather(
-        run_discovery(discovery_session, trigger_download_event), run_download(download_session, trigger_download_event)
+        run_discovery(discovery_repository, trigger_download_event, discovery_done_event),
+        run_download(download_repository, trigger_download_event, discovery_done_event),
     )
 
 
