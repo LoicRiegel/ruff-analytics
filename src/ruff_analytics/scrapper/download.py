@@ -33,7 +33,7 @@ async def run_download(
 
             trigger_download_event.clear()
 
-            pending = repository.configs_to_download()
+            pending = repository.get_discovered_configs_to_download()
             for config in pending:
                 await _download_config(client, repository, config)
 
@@ -49,7 +49,7 @@ async def _download_config(client: AsyncClient, repository: ScrapperRepository, 
         logger.exception("Failed to download %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
         return
 
-    repository.save_content(
+    repository.save_config_content(
         repo_id=config.repo_id,
         config_path=config.config_path,
         blob_sha=config.blob_sha,

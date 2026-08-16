@@ -26,10 +26,10 @@ async def init_discovery(repository: ScrapperRepository) -> None:
     upper_size_range = SizeRange(20_001, 1_000_000)
     main_size_range = SizeRange(0, 20_000)
     for size_range in (upper_size_range, main_size_range):
-        repository.create_window("PYPROJECT_TOML_WITH_RUFF", size_range)
-        repository.create_window("PYPROJECT_TOML_WITH_TY", size_range)
-        repository.create_window("RUFF_TOML", size_range)
-        repository.create_window("TY_TOML", size_range)
+        repository.create_discovery_window("PYPROJECT_TOML_WITH_RUFF", size_range)
+        repository.create_discovery_window("PYPROJECT_TOML_WITH_TY", size_range)
+        repository.create_discovery_window("RUFF_TOML", size_range)
+        repository.create_discovery_window("TY_TOML", size_range)
 
 
 async def run_discovery(
@@ -37,7 +37,7 @@ async def run_discovery(
 ) -> None:
     """Start or resume discovery — processes all pending windows until none remain."""
     async with AsyncClient() as client:
-        while window := repository.next_window_to_process():
+        while window := repository.next_discovery_window_to_process():
             await _process_window(client, repository, window)
             trigger_download_event.set()
     discovery_done_event.set()
@@ -81,7 +81,7 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
             window.size_to,
             e.response.status_code,
         )
-        repository.mark_window_as_error(window.id)
+        repository.mark_discovery_window_as_error(window.id)
         return
     if result.total_count > MAX_RESULTS_PER_RESPONSE:
         try:
@@ -93,7 +93,7 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
                 window.size_to,
                 result.total_count,
             )
-            repository.mark_window_as_error(window.id)
+            repository.mark_discovery_window_as_error(window.id)
         else:
             logger.info(
                 "Discovery: window %d - %d needs to be split (total count %d)",
@@ -101,7 +101,7 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
                 window.size_to,
                 result.total_count,
             )
-            repository.split_window(window.id, size_range_split)
+            repository.split_discovery_window(window.id, size_range_split)
         return
     logger.debug(
         "Discovery: window %d - %d is ready (total count %d)", window.size_from, window.size_to, result.total_count
@@ -121,7 +121,7 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
                 window.size_to,
                 e.response.status_code,
             )
-            repository.mark_window_as_error(window.id)
+            repository.mark_discovery_window_as_error(window.id)
             return
         _save_configs(repository, result.items, window.config_type, result.discovered_at)
     logger.info(
@@ -130,4 +130,4 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
         window.size_to,
         result.total_count,
     )
-    repository.mark_window_as_done(window.id, result.total_count)
+    repository.mark_discovery_window_as_done(window.id, result.total_count)

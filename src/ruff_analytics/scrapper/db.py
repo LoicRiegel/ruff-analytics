@@ -68,7 +68,7 @@ class ScrapperRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def create_window(self, config_type: ConfigType, size_range: SizeRange) -> None:
+    def create_discovery_window(self, config_type: ConfigType, size_range: SizeRange) -> None:
         """Add a new pending scan window (not committed)."""
         self._session.add(
             ScanWindow(
@@ -82,30 +82,30 @@ class ScrapperRepository:
         )
         self._session.commit()
 
-    def next_window_to_process(self) -> ScanWindow | None:
+    def next_discovery_window_to_process(self) -> ScanWindow | None:
         """Return the next pending or needs-split window to process, if any."""
         return self._session.query(ScanWindow).filter(ScanWindow.window_status.in_(["pending", "needs_split"])).first()
 
-    def mark_window_as_done(self, window_id: int, result_count: int) -> None:
+    def mark_discovery_window_as_done(self, window_id: int, result_count: int) -> None:
         """Mark a window as done with its result count, and commit."""
         window = cast("ScanWindow", self._session.get(ScanWindow, window_id))
         window.window_status = "done"
         window.result_count = result_count
         self._session.commit()
 
-    def mark_window_as_error(self, window_id: int) -> None:
+    def mark_discovery_window_as_error(self, window_id: int) -> None:
         """Mark a window as errored, and commit."""
         window = cast("ScanWindow", self._session.get(ScanWindow, window_id))
         window.window_status = "error"
         self._session.commit()
 
-    def split_window(self, window_id: int, size_range_split: SizeRangeSplit) -> None:
+    def split_discovery_window(self, window_id: int, size_range_split: SizeRangeSplit) -> None:
         """Mark a window as split and create its two replacement windows, then commit."""
         window = cast("ScanWindow", self._session.get(ScanWindow, window_id))
         config_type = window.config_type
         window.window_status = "split"
-        self.create_window(config_type, size_range_split.first)
-        self.create_window(config_type, size_range_split.second)
+        self.create_discovery_window(config_type, size_range_split.first)
+        self.create_discovery_window(config_type, size_range_split.second)
         self._session.commit()
 
     def save_repo(self, repo_id: int, repo_owner: str, repo_name: str) -> None:
@@ -135,7 +135,7 @@ class ScrapperRepository:
         )
         self._session.commit()
 
-    def save_content(
+    def save_config_content(
         self, repo_id: int, config_path: str, blob_sha: str, content: str, downloaded_at: datetime
     ) -> None:
         """Upsert a downloaded config's content, and commit."""
@@ -150,7 +150,7 @@ class ScrapperRepository:
         )
         self._session.commit()
 
-    def configs_to_download(self) -> Sequence[Config]:
+    def get_discovered_configs_to_download(self) -> Sequence[Config]:
         """Return the configs that are not downloaded yet, or whose downloaded content is out of date."""
         stmt = (
             select(Config)
