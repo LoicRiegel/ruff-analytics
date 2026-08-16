@@ -49,6 +49,7 @@ def _save_configs(
     configs: list[DiscoveredConfigResult],
     config_type: ConfigType,
     discovered_at: datetime,
+    query: str,
 ) -> None:
     for config in configs:
         if config.repository.fork:
@@ -66,6 +67,7 @@ def _save_configs(
             blob_sha=config.blob_sha,
             commit_sha=config.get_commit_sha(),
             discovered_at=discovered_at,
+            query=query,
         )
 
 
@@ -73,7 +75,7 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
     logger.debug("Processing window %s - %s: %s", str(window.size_from), str(window.size_to), window.window_status)
     size_range = SizeRange(window.size_from, window.size_to)
     try:
-        result = await discover_configs(client, window.config_type, size_range, page=1)
+        query, result = await discover_configs(client, window.config_type, size_range, page=1)
     except HTTPStatusError as e:
         logger.exception(
             "Discovery: processed window %d - %d as error (HTTP response was %d)",
@@ -106,14 +108,14 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
     logger.debug(
         "Discovery: window %d - %d is ready (total count %d)", window.size_from, window.size_to, result.total_count
     )
-    _save_configs(repository, result.items, window.config_type, result.discovered_at)
+    _save_configs(repository, result.items, window.config_type, result.discovered_at, query)
     num_pages = (result.total_count + RESULTS_PER_PAGE - 1) // RESULTS_PER_PAGE
     for page in range(2, num_pages + 1):
         logger.debug(
             "Discovery: fetching page %d/%d for window %d - %d", page, num_pages, window.size_from, window.size_to
         )
         try:
-            result = await discover_configs(client, window.config_type, size_range, page=page)
+            query, result = await discover_configs(client, window.config_type, size_range, page=page)
         except HTTPStatusError as e:
             logger.exception(
                 "Discovery: error when discovering configurations from window %d - %d (HTTP response was %d)",
@@ -123,7 +125,7 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
             )
             repository.mark_discovery_window_as_error(window.id)
             return
-        _save_configs(repository, result.items, window.config_type, result.discovered_at)
+        _save_configs(repository, result.items, window.config_type, result.discovered_at, query)
     logger.info(
         "Discovery: saved configurations for window %d - %d (total count %d)",
         window.size_from,

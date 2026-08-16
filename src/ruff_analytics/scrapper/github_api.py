@@ -20,7 +20,7 @@ RESULTS_PER_PAGE = 100
 
 async def discover_configs(
     client: AsyncClient, config_type: ConfigType, size_range: SizeRange, page: int
-) -> DiscoveryResult:
+) -> tuple[str, DiscoveryResult]:
     """Discover the files of the provided config type, within the provided size range and in the given page.
 
     Retry when rate limitations are hit.
@@ -32,7 +32,7 @@ async def discover_configs(
     )
     response = await _send_request(client, request)
     response.raise_for_status()
-    return DiscoveryResult.model_validate(response.json())
+    return query, DiscoveryResult.model_validate(response.json())
 
 
 async def download_blob(client: AsyncClient, repo_id: int, blob_sha: str) -> DownloadResult:

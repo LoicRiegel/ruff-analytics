@@ -49,6 +49,7 @@ class Config(Base):
     blob_sha: Mapped[str] = mapped_column(String(40), nullable=False)
     commit_sha: Mapped[str] = mapped_column(String(40), nullable=False)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    query: Mapped[str] = mapped_column(String(255))
     repo: Mapped[Repo] = relationship(lazy="joined")
 
 
@@ -121,6 +122,7 @@ class ScrapperRepository:
         blob_sha: str,
         commit_sha: str,
         discovered_at: datetime,
+        query: str,
     ) -> None:
         """Upsert a discovered config (not committed)."""
         self._session.merge(
@@ -131,6 +133,7 @@ class ScrapperRepository:
                 blob_sha=blob_sha,
                 commit_sha=commit_sha,
                 discovered_at=discovered_at,
+                query=query,
             )
         )
         self._session.commit()
