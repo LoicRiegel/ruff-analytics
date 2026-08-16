@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 
 from ruff_analytics.scrapper.config_type import ConfigType  # noqa: TC001 (needed by sqlalchemy)
 
@@ -72,25 +72,34 @@ def next_window_to_process(session: Session) -> ScanWindow | None:
     return session.query(ScanWindow).filter(ScanWindow.window_status.in_(["pending", "needs_split"])).first()
 
 
+class Repo(Base):
+    __tablename__ = "repos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+
+def save_repo(session: Session, repo_id: int, repo_owner: str, repo_name: str) -> None:
+    session.merge(Repo(id=repo_id, owner=repo_owner, name=repo_name))
+
+
 class Config(Base):
     __tablename__ = "configs"
     __table_args__ = (Index("idx_configs_type", "config_type"), Index("idx_configs_discovered_at", "discovered_at"))
 
-    repo_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    repo_owner: Mapped[str] = mapped_column(String, primary_key=True)
-    repo_name: Mapped[str] = mapped_column(String, primary_key=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("repos.id"), primary_key=True)
     config_path: Mapped[str] = mapped_column(String, primary_key=True)
     config_type: Mapped[ConfigType] = mapped_column(String(40), nullable=False)
     blob_sha: Mapped[str] = mapped_column(String(40), nullable=False)
     commit_sha: Mapped[str] = mapped_column(String(40), nullable=False)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    repo: Mapped[Repo] = relationship(lazy="joined")
 
 
-def save_config(  # noqa: PLR0913, PLR0917
+def save_config(
     session: Session,
     repo_id: int,
-    repo_owner: str,
-    repo_name: str,
     config_type: ConfigType,
     config_path: str,
     blob_sha: str,
@@ -100,8 +109,6 @@ def save_config(  # noqa: PLR0913, PLR0917
     session.merge(
         Config(
             repo_id=repo_id,
-            repo_owner=repo_owner,
-            repo_name=repo_name,
             config_type=config_type,
             config_path=config_path,
             blob_sha=blob_sha,

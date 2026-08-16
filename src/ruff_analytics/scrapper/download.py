@@ -29,7 +29,7 @@ async def _download_config(client: AsyncClient, session: Session, config: Config
     try:
         result = await download_blob(client, config.repo_id, config.blob_sha)
     except HTTPStatusError:
-        logger.exception("Failed to download %s/%s/%s", config.repo_owner, config.repo_name, config.config_path)
+        logger.exception("Failed to download %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
         return
 
     save_content(
@@ -40,4 +40,4 @@ async def _download_config(client: AsyncClient, session: Session, config: Config
         content=result.get_content(),
         downloaded_at=result.downloaded_at,
     )
-    logger.debug("Downloaded %s/%s/%s", config.repo_owner, config.repo_name, config.config_path)
+    logger.info("Downloaded %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)

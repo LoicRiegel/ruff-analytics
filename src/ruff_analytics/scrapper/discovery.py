@@ -12,6 +12,7 @@ from ruff_analytics.scrapper.db import (
     mark_window_as_error,
     next_window_to_process,
     save_config,
+    save_repo,
     split_window,
 )
 from ruff_analytics.scrapper.github_api import RESULTS_PER_PAGE, discover_configs
@@ -54,11 +55,15 @@ def _save_configs(
     session: Session, configs: list[DiscoveredConfigResult], config_type: ConfigType, discovered_at: datetime
 ) -> None:
     for config in configs:
-        save_config(
+        save_repo(
             session,
             repo_id=config.repository.id,
             repo_owner=config.repository.owner.login,
             repo_name=config.repository.name,
+        )
+        save_config(
+            session,
+            repo_id=config.repository.id,
             config_type=config_type,
             config_path=config.path,
             blob_sha=config.blob_sha,
@@ -74,7 +79,7 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
         result = await discover_configs(client, window.config_type, size_range, page=1)
     except HTTPStatusError as e:
         logger.exception(
-            "Processed window %d - %d: error (HTTP response was %d)",
+            "Discovery: processed window %d - %d as error (HTTP response was %d)",
             window.size_from,
             window.size_to,
             e.response.status_code,
@@ -86,7 +91,7 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
             size_range_split = split_size_range(size_range)
         except ValueError:
             logger.error(  # noqa: TRY400
-                "Processed window %d - %d: error should be split but the window cannot be split (total count %d)",
+                "Discovery: window %d - %d should be split but the window cannot be split (total count %d)",
                 window.size_from,
                 window.size_to,
                 result.total_count,
@@ -94,15 +99,15 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
             mark_window_as_error(session, window.id)
         else:
             logger.info(
-                "Processed window %d - %d: needs split (total count %d)",
+                "Discovery: window %d - %d needs to be split (total count %d)",
                 window.size_from,
                 window.size_to,
                 result.total_count,
             )
             split_window(session, window.id, size_range_split)
         return
-    logger.info(
-        "Processed window %d - %d: ready (total count %d)", window.size_from, window.size_to, result.total_count
+    logger.debug(
+        "Discovery: window %d - %d is ready (total count %d)", window.size_from, window.size_to, result.total_count
     )
     _save_configs(session, result.items, window.config_type, result.discovered_at)
     num_pages = (result.total_count + RESULTS_PER_PAGE - 1) // RESULTS_PER_PAGE
@@ -111,7 +116,7 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
             result = await discover_configs(client, window.config_type, size_range, page=page)
         except HTTPStatusError as e:
             logger.exception(
-                "Processed window %d - %d: error (HTTP response was %d)",
+                "Discovery: error when discovering configurations from window %d - %d (HTTP response was %d)",
                 window.size_from,
                 window.size_to,
                 e.response.status_code,
@@ -119,5 +124,10 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
             mark_window_as_error(session, window.id)
             return
         _save_configs(session, result.items, window.config_type, result.discovered_at)
-    logger.info("Processed window %d - %d: done (total count %d)", window.size_from, window.size_to, result.total_count)
+    logger.info(
+        "Discovery: saved configurations for window %d - %d (total count %d)",
+        window.size_from,
+        window.size_to,
+        result.total_count,
+    )
     mark_window_as_done(session, window.id, result.total_count)
