@@ -20,7 +20,7 @@ type WindowStatus = Literal["pending", "done", "needs_split", "split", "error"]
 
 
 class ScanWindow(Base):
-    __tablename__ = "scan_windows"
+    __tablename__ = "discovery_windows"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     config_type: Mapped[ConfigType] = mapped_column(String(20), nullable=False)
