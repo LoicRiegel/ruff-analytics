@@ -1,13 +1,13 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
-from sqlalchemy import Date, DateTime, Index, Integer, String
+from sqlalchemy import DateTime, Index, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from ruff_analytics.scrapper.config_type import ConfigType  # noqa: TC001 (needed by sqlalchemy)
 
 if TYPE_CHECKING:
-    from ruff_analytics.scrapper.date_range import DateRange, DateRangeSplit
+    from ruff_analytics.scrapper.size_range import SizeRange, SizeRangeSplit
 
 
 class Base(DeclarativeBase):
@@ -22,19 +22,19 @@ class ScanWindow(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     config_type: Mapped[ConfigType] = mapped_column(String(20), nullable=False)
-    date_from: Mapped[date] = mapped_column(Date, nullable=False)
-    date_to: Mapped[date] = mapped_column(Date, nullable=False)
+    size_from: Mapped[int] = mapped_column(Integer, nullable=False)
+    size_to: Mapped[int] = mapped_column(Integer, nullable=False)
     window_status: Mapped[WindowStatus] = mapped_column(String(20), nullable=False)
     result_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-def create_window(session: Session, config_type: ConfigType, date_range: DateRange) -> None:
+def create_window(session: Session, config_type: ConfigType, size_range: SizeRange) -> None:
     session.add(
         ScanWindow(
             config_type=config_type,
-            date_from=date_range.date_from,
-            date_to=date_range.date_to,
+            size_from=size_range.size_from,
+            size_to=size_range.size_to,
             window_status="pending",
             result_count=None,
             created_at=datetime.now(tz=UTC),
@@ -58,12 +58,12 @@ def mark_window_as_needs_split(session: Session, window_id: int) -> None:
     window.window_status = "needs_split"
 
 
-def split_window(session: Session, window_id: int, date_range_split: DateRangeSplit) -> None:
+def split_window(session: Session, window_id: int, size_range_split: SizeRangeSplit) -> None:
     window = cast("ScanWindow", session.get(ScanWindow, window_id))
     config_type = window.config_type
     window.window_status = "split"
-    create_window(session, config_type, date_range_split.first)
-    create_window(session, config_type, date_range_split.second)
+    create_window(session, config_type, size_range_split.first)
+    create_window(session, config_type, size_range_split.second)
 
 
 def next_window_to_process(session: Session) -> ScanWindow | None:
@@ -74,32 +74,35 @@ class Config(Base):
     __tablename__ = "configs"
     __table_args__ = (Index("idx_configs_type", "config_type"), Index("idx_configs_discovered_at", "discovered_at"))
 
+    repo_id: Mapped[int] = mapped_column(Integer, nullable=False)
     repo_owner: Mapped[str] = mapped_column(String, primary_key=True)
     repo_name: Mapped[str] = mapped_column(String, primary_key=True)
     config_path: Mapped[str] = mapped_column(String, primary_key=True)
     config_type: Mapped[ConfigType] = mapped_column(String(40), nullable=False)
-    branch: Mapped[str] = mapped_column(String, nullable=False)
+    blob_sha: Mapped[str] = mapped_column(String(40), nullable=False)
     commit_sha: Mapped[str] = mapped_column(String(40), nullable=False)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-def save_config(
+def save_config(  # noqa: PLR0913, PLR0917
     session: Session,
+    repo_id: int,
     repo_owner: str,
     repo_name: str,
     config_type: ConfigType,
     config_path: str,
-    branch: str,
+    blob_sha: str,
     commit_sha: str,
     discovered_at: datetime,
 ) -> None:
     session.merge(
         Config(
+            repo_id=repo_id,
             repo_owner=repo_owner,
             repo_name=repo_name,
             config_type=config_type,
             config_path=config_path,
-            branch=branch,
+            blob_sha=blob_sha,
             commit_sha=commit_sha,
             discovered_at=discovered_at,
         )

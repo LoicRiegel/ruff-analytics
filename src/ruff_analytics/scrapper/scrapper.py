@@ -1,13 +1,12 @@
 """Core scraping logic for collecting ruff configuration files from GitHub."""
 
 import logging
-from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import parse_qs, urlparse
 
 from httpx import AsyncClient
 
-from ruff_analytics.scrapper.config_type import parse_config_type
-from ruff_analytics.scrapper.date_range import DateRange, split_date_range
 from ruff_analytics.scrapper.db import (
     ScanWindow,
     create_window,
@@ -18,23 +17,27 @@ from ruff_analytics.scrapper.db import (
     split_window,
 )
 from ruff_analytics.scrapper.github_api import RESULTS_PER_PAGE, build_request, send_request
+from ruff_analytics.scrapper.size_range import SizeRange, split_size_range
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
+    from ruff_analytics.scrapper.config_type import ConfigType
 
-START_DATE = date(2022, 1, 1)  # this is the year ruff was released
+logger = logging.getLogger(__name__)
 
 MAX_RESULTS_PER_RESPONSE = 1000
 
 
 async def init_scrapper(session: Session) -> None:
     """Probe GitHub once per query type and insert initial windows. Call only once."""
-    date_range = DateRange(START_DATE, datetime.now(tz=UTC).date())
-    create_window(session, "pyproject.toml", date_range)
-    create_window(session, "ruff.toml", date_range)
-    create_window(session, ".ruff.toml", date_range)
+    upper_size_range = SizeRange(20_001, 1_000_000)
+    main_size_range = SizeRange(0, 20_000)
+    for size_range in (upper_size_range, main_size_range):
+        create_window(session, "PYPROJECT_TOML_WITH_RUFF", size_range)
+        create_window(session, "PYPROJECT_TOML_WITH_TY", size_range)
+        create_window(session, "RUFF_TOML", size_range)
+        create_window(session, "TY_TOML", size_range)
     session.commit()
     logger.info("Ready to start the scrapping...")
 
@@ -51,38 +54,40 @@ async def run_scraper(session: Session) -> None:
             logger.info("Scraping interrupted (can be resumed later)")
 
 
-def _save_config(session: Session, data: dict[str, Any]) -> None:
+def _save_config(session: Session, data: dict[str, Any], config_type: ConfigType) -> None:
     discovered_at = datetime.now(tz=UTC)
     for item in data["items"]:
-        config_path = item["path"]
-        commit_sha = item["sha"]
-        repo = item["repository"]
-        repo_owner = repo["owner"]["login"]
-        repo_name = repo["name"]
-        branch = repo["default_branch"]
+        config_path = cast("str", item["path"])
+        blob_sha = cast("str", item["sha"])
+        commit_sha = cast("str", parse_qs(urlparse(item["url"]).query)["ref"][0])
+        repo = cast("dict[str, Any]", item["repository"])
+        repo_id = cast("int", repo["id"])
+        repo_owner = cast("str", repo["owner"]["login"])
+        repo_name = cast("str", repo["name"])
         save_config(
             session,
+            repo_id=repo_id,
             repo_owner=repo_owner,
             repo_name=repo_name,
-            config_type=parse_config_type(config_path),
+            config_type=config_type,
             config_path=config_path,
-            branch=branch,
+            blob_sha=blob_sha,
             commit_sha=commit_sha,
             discovered_at=discovered_at,
         )
 
 
 async def _process_window(client: AsyncClient, session: Session, window: ScanWindow) -> None:
-    logger.debug("Processing window %s - %s: %s", str(window.date_from), str(window.date_to), window.window_status)
-    date_range = DateRange(window.date_from, window.date_to)
-    request = build_request(client, window.config_type, date_range, page=1)
+    logger.debug("Processing window %s - %s: %s", str(window.size_from), str(window.size_to), window.window_status)
+    size_range = SizeRange(window.size_from, window.size_to)
+    request = build_request(client, window.config_type, size_range, page=1)
     response = await send_request(client, request)
     if not response.is_success:
         logger.error(
-            "Processed window %s - %s: error (HTTP response was %s)",
-            str(window.date_from),
-            str(window.date_to),
-            str(response.status_code),
+            "Processed window %d - %d: error (HTTP response was %d)",
+            window.size_from,
+            window.size_to,
+            response.status_code,
         )
         mark_window_as_error(session, window.id)
         return
@@ -90,35 +95,32 @@ async def _process_window(client: AsyncClient, session: Session, window: ScanWin
     total_count: int = data["total_count"]
     if total_count > MAX_RESULTS_PER_RESPONSE:
         try:
-            date_range_split = split_date_range(date_range)
+            size_range_split = split_size_range(size_range)
         except ValueError:
             logger.error(  # noqa: TRY400
-                "Processed window %s - %s: error should be split but the window cannot be split (total count %s)",
-                str(window.date_from),
-                str(window.date_to),
-                str(total_count),
+                "Processed window %d - %d: error should be split but the window cannot be split (total count %d)",
+                window.size_from,
+                window.size_to,
+                total_count,
             )
             mark_window_as_error(session, window.id)
         else:
             logger.info(
-                "Processed window %s - %s: needs split (total count %s)",
-                str(window.date_from),
-                str(window.date_to),
-                str(total_count),
+                "Processed window %d - %d: needs split (total count %d)", window.size_from, window.size_to, total_count
             )
-            split_window(session, window.id, date_range_split)
+            split_window(session, window.id, size_range_split)
         return
     logger.info(
-        "Processed window %s - %s: ready (total count %s)", str(window.date_from), str(window.date_to), str(total_count)
+        "Processed window %s - %s: ready (total count %s)", str(window.size_from), str(window.size_to), str(total_count)
     )
-    _save_config(session, data)
+    _save_config(session, data, window.config_type)
     num_pages = (total_count + RESULTS_PER_PAGE - 1) // RESULTS_PER_PAGE
     for page in range(2, num_pages + 1):
-        request = build_request(client, window.config_type, date_range, page=page)
+        request = build_request(client, window.config_type, size_range, page=page)
         response = await send_request(client, request)
         data = response.json()
-        _save_config(session, data)
+        _save_config(session, data, window.config_type)
     logger.info(
-        "Processed window %s - %s: done (total count %s)", str(window.date_from), str(window.date_to), str(total_count)
+        "Processed window %s - %s: done (total count %s)", str(window.size_from), str(window.size_to), str(total_count)
     )
     mark_window_as_done(session, window.id, total_count)
