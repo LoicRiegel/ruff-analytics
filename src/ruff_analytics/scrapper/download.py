@@ -1,5 +1,6 @@
 """Download ruff and ty configuration files from GitHub."""
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -16,13 +17,27 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+POLL_INTERVAL_SECONDS = 5
 
-async def run_download(session: Session) -> None:
-    """Start or resume downloading the discovered configuration files that are missing or outdated."""
+
+async def run_download(session: Session, trigger_download_event: asyncio.Event) -> None:
+    """Start or resume downloading the discovered configuration files that are missing or outdated.
+
+    Keeps polling for newly discovered configs (discovery runs concurrently and may add work at any time),
+    stopping only once `discovery_done` is set and no configs are left to download.
+    """
     async with AsyncClient() as client:
-        for config in configs_to_download(session):
-            await _download_config(client, session, config)
-            session.commit()
+        while True:
+            if not trigger_download_event.is_set():
+                await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                continue
+
+            trigger_download_event.clear()
+
+            pending = configs_to_download(session)
+            for config in pending:
+                await _download_config(client, session, config)
+                session.commit()
 
 
 async def _download_config(client: AsyncClient, session: Session, config: Config) -> None:

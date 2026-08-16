@@ -19,6 +19,7 @@ from ruff_analytics.scrapper.github_api import RESULTS_PER_PAGE, discover_config
 from ruff_analytics.scrapper.size_range import SizeRange, split_size_range
 
 if TYPE_CHECKING:
+    import asyncio
     from datetime import datetime
 
     from sqlalchemy.orm import Session
@@ -43,12 +44,13 @@ async def init_discovery(session: Session) -> None:
     session.commit()
 
 
-async def run_discovery(session: Session) -> None:
+async def run_discovery(session: Session, trigger_download_event: asyncio.Event) -> None:
     """Start or resume discovery — processes all pending windows until none remain."""
     async with AsyncClient() as client:
         while window := next_window_to_process(session):
             await _process_window(client, session, window)
             session.commit()
+            trigger_download_event.set()
 
 
 def _save_configs(

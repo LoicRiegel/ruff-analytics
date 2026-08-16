@@ -65,7 +65,10 @@ def start(debug: bool = False) -> None:  # noqa: FBT001, FBT002
 
 
 async def _start_discovery_and_download(discovery_session: Session, download_session: Session) -> None:
-    await asyncio.gather(run_discovery(discovery_session), run_download(download_session))
+    trigger_download_event = asyncio.Event()
+    await asyncio.gather(
+        run_discovery(discovery_session, trigger_download_event), run_download(download_session, trigger_download_event)
+    )
 
 
 if __name__ == "__main__":
