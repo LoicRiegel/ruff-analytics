@@ -86,14 +86,14 @@ def _build_ty_query(size_range: SizeRange) -> str:
 
 def _build_pyproject_with_ruff_query(size_range: SizeRange) -> str:
     return (
-        "tool.ruff in:file filename:pyproject.toml extension:toml path:/ "
+        '"tool.ruff" in:file filename:pyproject.toml extension:toml path:/ '
         f"size:{size_range.size_from}..{size_range.size_to}"
     )
 
 
 def _build_pyproject_with_ty_query(size_range: SizeRange) -> str:
     return (
-        "tool.ty in:file filename:pyproject.toml extension:toml path:/ "
+        '"tool.ty" in:file filename:pyproject.toml extension:toml path:/ '
         f"size:{size_range.size_from}..{size_range.size_to}"
     )
 
