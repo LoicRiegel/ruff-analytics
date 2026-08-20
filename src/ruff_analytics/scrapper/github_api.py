@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+from http import HTTPStatus
 from typing import TYPE_CHECKING, assert_never
 
 from ruff_analytics.scrapper.models import DiscoveryResult, DownloadResult
@@ -47,19 +48,46 @@ async def download_blob(client: AsyncClient, repo_id: int, blob_sha: str) -> Dow
     return DownloadResult.model_validate(response.json())
 
 
+MAX_RETRIES_DEFAULT = 5
+RETRY_WAIT_DEFAULT = 60
+
+
 async def _send_request(client: AsyncClient, request: Request) -> Response:
     """Send a request and return the response.
 
-    Retry when rate limitations are hit.
+    Retry when rate limitations (primary or secondary) are hit.
     """
-    resp = await client.send(request)
-    if resp.is_client_error:
-        reset = resp.headers.get("x-ratelimit-reset")
-        wait = max(int(reset) - time.time(), 1) if reset else 60
-        logger.debug("Rate limited on %s, waiting %.0fs before retrying", request.url, wait)
+    response = await client.send(request)
+    retries = 0
+    while True:
+        if _check_response(response) or retries >= MAX_RETRIES_DEFAULT:
+            break
+        wait = _get_retry_wait(response)
+        logger.debug("Waiting %.0fs before retrying %s", wait, request.url)
         await asyncio.sleep(wait)
-        resp = await client.send(request)
-    return resp
+        response = await client.send(request)
+        retries += 1
+    return response
+
+
+def _check_response(response: Response) -> bool:
+    if response.status_code == HTTPStatus.FORBIDDEN:
+        logger.error("Got 403 response (Forbidden) for %s", response.url)
+        return False
+    if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+        logger.error("Got 429 response (Too many requests) for %s", response.url)
+        return False
+    return True
+
+
+def _get_retry_wait(resp: Response, default: float = RETRY_WAIT_DEFAULT) -> float:
+    retry_after: float | None = resp.headers.get("retry-after")
+    if retry_after is not None:
+        return max(float(retry_after), 1)
+    reset: str | None = resp.headers.get("x-ratelimit-reset")
+    if reset:
+        return int(reset) - time.time() + 1
+    return default
 
 
 def _build_query(config_type: ConfigType, size_range: SizeRange) -> str:
