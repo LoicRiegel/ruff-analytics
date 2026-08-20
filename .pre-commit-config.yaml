@@ -13,17 +13,20 @@ repos:
     -   id: uv-lock
   - repo: local
     hooks:
-    -   id: ruff
+    -   id: ruff-check
+        name: ruff check
         entry: uv run ruff check --fix
         language: system
-        types: [python]
-        name: ruff
+        pass_filenames: false
+    -   id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
         pass_filenames: false
   - repo: local
     hooks:
     -   id: ty
+        name: ty
         entry: uv run ty check --fix
         language: system
-        types: [python]
-        name: ty
         pass_filenames: false
