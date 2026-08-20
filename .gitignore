@@ -13,8 +13,7 @@ wheels/
 .env
 
 # Databases
-*.db
-*.db-journal
+*.db*
 
 # Everyone their own
 tmp/
