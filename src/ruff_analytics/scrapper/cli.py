@@ -72,6 +72,23 @@ def start() -> None:
             rich.print("Scraping interrupted (can be resumed later)")
 
 
+@app.command(help="Print the current discovery and download progress")
+def status() -> None:
+    """Print the number of discovered and downloaded configs."""
+    load_dotenv()
+    set_up_logging()
+    engine = _create_engine(os.environ[DB_URL_ENV_VAR])
+    with Session(engine) as session:
+        repository = ScrapperRepository(session)
+        discovered = repository.count_discovered_configs()
+        up_to_date, stale = repository.count_downloaded_configs()
+    up_to_date_percentage = (up_to_date / discovered * 100) if discovered else 0.0
+    stale_percentage = (stale / discovered * 100) if discovered else 0.0
+    rich.print(f"Discovered {discovered} configs")
+    rich.print(f"Downloaded {up_to_date}/{discovered} configs (up to date) ({up_to_date_percentage:.0f}%)")
+    rich.print(f"Downloaded {stale}/{discovered} configs (stale) ({stale_percentage:.0f}%)")
+
+
 async def _start_discovery_and_download(
     discovery_repository: ScrapperRepository, download_repository: ScrapperRepository
 ) -> None:

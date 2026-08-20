@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, select
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, case, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 
 from ruff_analytics.scrapper.config_type import ConfigType  # noqa: TC001 (needed by sqlalchemy)
@@ -161,3 +161,21 @@ class ScrapperRepository:
             .where((Content.blob_sha.is_(None)) | (Content.blob_sha != Config.blob_sha))
         )
         return self._session.execute(stmt).scalars().all()
+
+    def count_discovered_configs(self) -> int:
+        """Return the total number of discovered configs."""
+        return self._session.execute(select(func.count()).select_from(Config)).scalar_one()
+
+    def count_downloaded_configs(self) -> tuple[int, int]:
+        """Return (up_to_date, stale) counts of downloaded configs.
+
+        A downloaded config is up to date if its content's blob_sha matches the config's current blob_sha,
+        and stale otherwise (the config was re-discovered with a new blob_sha since it was downloaded).
+        """
+        up_to_date_case = case((Content.blob_sha == Config.blob_sha, 1), else_=0)
+        stmt = (
+            select(func.coalesce(func.sum(up_to_date_case), 0), func.coalesce(func.sum(1 - up_to_date_case), 0))
+            .select_from(Config)
+            .join(Content, (Config.repo_id == Content.repo_id) & (Config.config_path == Content.config_path))
+        )
+        return cast("tuple[int, int]", self._session.execute(stmt).one())
