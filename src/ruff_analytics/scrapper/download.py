@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from asyncio import Event, Semaphore
 from typing import TYPE_CHECKING
 
 from httpx import AsyncClient, HTTPStatusError
@@ -15,28 +16,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_SECONDS = 5
+MAX_CONCURRENT_DOWNLOADS = 10
 
 
 async def run_download(
-    repository: ScrapperRepository, trigger_download_event: asyncio.Event, discovery_done_event: asyncio.Event
+    repository: ScrapperRepository, trigger_download_event: Event, discovery_done_event: Event
 ) -> None:
     """Start or resume downloading the discovered configuration files that are missing or outdated.
 
     Keeps polling for newly discovered configs (discovery runs concurrently and may add work at any time),
     stopping only once `discovery_done` is set and no configs are left to download.
     """
+    semaphore = Semaphore(MAX_CONCURRENT_DOWNLOADS)
+
     async with AsyncClient() as client:
+
+        async def _download_config_limited(repository: ScrapperRepository, config: Config) -> None:
+            async with semaphore:
+                await _download_config(client, repository, config)
+
         while True:
             if not trigger_download_event.is_set():
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
                 continue
-
             trigger_download_event.clear()
-
             pending = repository.get_discovered_configs_to_download()
-            for config in pending:
-                await _download_config(client, repository, config)
-
+            await asyncio.gather(*(_download_config_limited(repository, config) for config in pending))
             if discovery_done_event.is_set():
                 logger.info("Downloading files is done")
                 return
