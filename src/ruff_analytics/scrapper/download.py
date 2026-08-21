@@ -3,6 +3,8 @@
 import asyncio
 import logging
 from asyncio import Event, Semaphore
+from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import TYPE_CHECKING
 
 from httpx import AsyncClient, HTTPStatusError
@@ -16,12 +18,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_SECONDS = 5
+
+PERMANENT_FAILURE_STATUSES = {HTTPStatus.NOT_FOUND, HTTPStatus.GONE}
 MAX_CONCURRENT_DOWNLOADS = 10
 
 
-async def run_download(
-    repository: ScrapperRepository, trigger_download_event: Event, discovery_done_event: Event
-) -> None:
+async def run_download(repository: ScrapperRepository, discovery_done_event: Event) -> None:
     """Start or resume downloading the discovered configuration files that are missing or outdated.
 
     Keeps polling for newly discovered configs (discovery runs concurrently and may add work at any time),
@@ -36,22 +38,35 @@ async def run_download(
                 await _download_config(client, repository, config)
 
         while True:
-            if not trigger_download_event.is_set():
+            pending = repository.get_discovered_configs_to_download()
+            if not pending:
+                if discovery_done_event.is_set():
+                    logger.info("No more configs to download")
+                    return
+                logger.debug(
+                    "No configs to download (waiting for discover), sleeping for %d seconds", POLL_INTERVAL_SECONDS
+                )
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
                 continue
-            trigger_download_event.clear()
-            pending = repository.get_discovered_configs_to_download()
             await asyncio.gather(*(_download_config_limited(repository, config) for config in pending))
-            if discovery_done_event.is_set():
-                logger.info("Downloading files is done")
-                return
 
 
 async def _download_config(client: AsyncClient, repository: ScrapperRepository, config: Config) -> None:
     try:
         result = await download_blob(client, config.repo_id, config.blob_sha)
-    except HTTPStatusError:
+    except HTTPStatusError as error:
         logger.exception("Failed to download %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
+        if error.response.status_code in PERMANENT_FAILURE_STATUSES:
+            logger.info(
+                "Saved %s/%s/%s as permanent download failures", config.repo.owner, config.repo.name, config.config_path
+            )
+            repository.save_download_failure(
+                repo_id=config.repo_id,
+                config_path=config.config_path,
+                blob_sha=config.blob_sha,
+                status_code=error.response.status_code,
+                failed_at=datetime.now(tz=UTC),
+            )
         return
 
     repository.save_config_content(

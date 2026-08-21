@@ -63,6 +63,18 @@ class Content(Base):
     downloaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class DownloadFailure(Base):
+    """A permanent (non-retryable) failure to download a config's blob."""
+
+    __tablename__ = "download_failures"
+
+    repo_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    config_path: Mapped[str] = mapped_column(String, primary_key=True)
+    blob_sha: Mapped[str] = mapped_column(String(40), nullable=False)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ScrapperRepository:
     """Data-access layer for the scrapper, owning the session and its commit boundaries."""
 
@@ -153,12 +165,36 @@ class ScrapperRepository:
         )
         self._session.commit()
 
+    def save_download_failure(
+        self, repo_id: int, config_path: str, blob_sha: str, status_code: int, failed_at: datetime
+    ) -> None:
+        """Upsert a permanent download failure for a config's blob_sha, and commit."""
+        self._session.merge(
+            DownloadFailure(
+                repo_id=repo_id,
+                config_path=config_path,
+                blob_sha=blob_sha,
+                status_code=status_code,
+                failed_at=failed_at,
+            )
+        )
+        self._session.commit()
+
     def get_discovered_configs_to_download(self) -> Sequence[Config]:
-        """Return the configs that are not downloaded yet, or whose downloaded content is out of date."""
+        """Return the configs that are not downloaded yet, or whose downloaded content is out of date.
+
+        Configs with a recorded permanent download failure for their current blob_sha are excluded;
+        they will be retried automatically once rediscovered with a new blob_sha.
+        """
         stmt = (
             select(Config)
             .outerjoin(Content, (Config.repo_id == Content.repo_id) & (Config.config_path == Content.config_path))
+            .outerjoin(
+                DownloadFailure,
+                (Config.repo_id == DownloadFailure.repo_id) & (Config.config_path == DownloadFailure.config_path),
+            )
             .where((Content.blob_sha.is_(None)) | (Content.blob_sha != Config.blob_sha))
+            .where((DownloadFailure.blob_sha.is_(None)) | (DownloadFailure.blob_sha != Config.blob_sha))
         )
         return self._session.execute(stmt).scalars().all()
 

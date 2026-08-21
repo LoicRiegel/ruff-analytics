@@ -32,14 +32,11 @@ async def init_discovery(repository: ScrapperRepository) -> None:
         repository.create_discovery_window("TY_TOML", size_range)
 
 
-async def run_discovery(
-    repository: ScrapperRepository, trigger_download_event: asyncio.Event, discovery_done_event: asyncio.Event
-) -> None:
+async def run_discovery(repository: ScrapperRepository, discovery_done_event: asyncio.Event) -> None:
     """Start or resume discovery — processes all pending windows until none remain."""
     async with AsyncClient() as client:
         while window := repository.next_discovery_window_to_process():
             await _process_window(client, repository, window)
-            trigger_download_event.set()
     discovery_done_event.set()
     logger.info("Discovery is done")
 
