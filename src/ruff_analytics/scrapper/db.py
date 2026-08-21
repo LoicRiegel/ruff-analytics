@@ -41,7 +41,11 @@ class Repo(Base):
 
 class Config(Base):
     __tablename__ = "configs"
-    __table_args__ = (Index("idx_configs_type", "config_type"), Index("idx_configs_discovered_at", "discovered_at"))
+    __table_args__ = (
+        Index("idx_configs_type", "config_type"),
+        Index("idx_configs_discovered_at", "discovered_at"),
+        Index("idx_configs_lookup", "repo_id", "config_path", "blob_sha"),
+    )
 
     repo_id: Mapped[int] = mapped_column(ForeignKey("repos.id"), primary_key=True)
     config_path: Mapped[str] = mapped_column(String, primary_key=True)
@@ -55,6 +59,7 @@ class Config(Base):
 
 class Content(Base):
     __tablename__ = "contents"
+    __table_args__ = (Index("idx_contents_lookup", "repo_id", "config_path", "blob_sha"),)
 
     repo_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     config_path: Mapped[str] = mapped_column(String, primary_key=True)

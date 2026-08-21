@@ -93,10 +93,9 @@ async def _start_discovery_and_download(
     discovery_repository: ScrapperRepository, download_repository: ScrapperRepository
 ) -> None:
     discovery_done_event = asyncio.Event()
-    await asyncio.gather(
-        run_discovery(discovery_repository, discovery_done_event),
-        run_download(download_repository, discovery_done_event),
-    )
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(run_discovery(discovery_repository, discovery_done_event), name="discovery")
+        tg.create_task(run_download(download_repository, discovery_done_event), name="download")
 
 
 if __name__ == "__main__":

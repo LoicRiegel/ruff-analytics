@@ -31,12 +31,11 @@ async def run_download(repository: ScrapperRepository, discovery_done_event: Eve
     """
     semaphore = Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
+    async def _download_config_limited(client: AsyncClient, config: Config) -> None:
+        async with semaphore:
+            await _download_config(client, repository, config)
+
     async with AsyncClient() as client:
-
-        async def _download_config_limited(repository: ScrapperRepository, config: Config) -> None:
-            async with semaphore:
-                await _download_config(client, repository, config)
-
         while True:
             pending = repository.get_discovered_configs_to_download()
             if not pending:
@@ -48,10 +47,15 @@ async def run_download(repository: ScrapperRepository, discovery_done_event: Eve
                 )
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
                 continue
-            await asyncio.gather(*(_download_config_limited(repository, config) for config in pending))
+
+            logger.info("Start downloading %d configs", len(pending))
+            async with asyncio.TaskGroup() as tg:
+                for config in pending:
+                    tg.create_task(_download_config_limited(client, config))
 
 
 async def _download_config(client: AsyncClient, repository: ScrapperRepository, config: Config) -> None:
+    logger.debug("Downloading %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
     try:
         result = await download_blob(client, config.repo_id, config.blob_sha)
     except HTTPStatusError as error:
