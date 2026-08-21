@@ -3,7 +3,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from httpx import AsyncClient, HTTPStatusError
+from httpx import AsyncClient, HTTPStatusError, RequestError
 
 from ruff_analytics.scrapper.github_api import RESULTS_PER_PAGE, discover_configs
 from ruff_analytics.scrapper.size_range import SizeRange, split_size_range
@@ -73,6 +73,14 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
     size_range = SizeRange(window.size_from, window.size_to)
     try:
         query, result = await discover_configs(client, window.config_type, size_range, page=1)
+    except RequestError:
+        logger.warning(
+            "Discovery: transient network error when processing window %d - %d; will retry later",
+            window.size_from,
+            window.size_to,
+            exc_info=True,
+        )
+        return
     except HTTPStatusError as e:
         logger.exception(
             "Discovery: processed window %d - %d as error (HTTP response was %d)",
@@ -113,6 +121,16 @@ async def _process_window(client: AsyncClient, repository: ScrapperRepository, w
         )
         try:
             query, result = await discover_configs(client, window.config_type, size_range, page=page)
+        except RequestError:
+            logger.warning(
+                "Discovery: transient network error when fetching page %d/%d for window %d - %d; will retry later",
+                page,
+                num_pages,
+                window.size_from,
+                window.size_to,
+                exc_info=True,
+            )
+            return
         except HTTPStatusError as e:
             logger.exception(
                 "Discovery: error when discovering configurations from window %d - %d (HTTP response was %d)",

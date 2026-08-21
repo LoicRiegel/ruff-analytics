@@ -5,6 +5,8 @@ import time
 from http import HTTPStatus
 from typing import TYPE_CHECKING, assert_never
 
+from httpx import RequestError
+
 from ruff_analytics.scrapper.models import DiscoveryResult, DownloadResult
 
 if TYPE_CHECKING:
@@ -48,8 +50,9 @@ async def download_blob(client: AsyncClient, repo_id: int, blob_sha: str) -> Dow
     return DownloadResult.model_validate(response.json())
 
 
-MAX_RETRIES_DEFAULT = 5
-RETRY_WAIT_DEFAULT = 60
+MAX_RETRIES = 5
+RETRY_WAIT_NETWORK_ERROR = 5
+RETRY_WAIT_ON_RATE_LIMITING = 60
 
 
 async def _send_request(client: AsyncClient, request: Request) -> Response:
@@ -57,30 +60,46 @@ async def _send_request(client: AsyncClient, request: Request) -> Response:
 
     Retry when rate limitations (primary or secondary) are hit.
     """
-    response = await client.send(request)
     retries = 0
     while True:
-        if _check_response(response) or retries >= MAX_RETRIES_DEFAULT:
-            break
+        try:
+            response = await client.send(request)
+        except RequestError:
+            if retries >= MAX_RETRIES:
+                raise
+            retries += 1
+            wait = min(RETRY_WAIT_NETWORK_ERROR * retries, RETRY_WAIT_ON_RATE_LIMITING)
+            logger.warning(
+                "Request transport error for %s, retrying in %.0fs (%d/%d)",
+                request.url,
+                wait,
+                retries,
+                MAX_RETRIES,
+                exc_info=True,
+            )
+            await asyncio.sleep(wait)
+            continue
+
+        if _check_response(response) or retries >= MAX_RETRIES:
+            return response
+
         wait = _get_retry_wait(response)
         logger.debug("Waiting %.0fs before retrying %s", wait, request.url)
         await asyncio.sleep(wait)
-        response = await client.send(request)
         retries += 1
-    return response
 
 
 def _check_response(response: Response) -> bool:
     if response.status_code == HTTPStatus.FORBIDDEN:
-        logger.error("Got 403 response (Forbidden) for %s", response.url)
+        logger.error("Response error 403 (Forbidden) for %s", response.url)
         return False
     if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
-        logger.error("Got 429 response (Too many requests) for %s", response.url)
+        logger.error("Response error 429 (Too many requests) for %s", response.url)
         return False
     return True
 
 
-def _get_retry_wait(resp: Response, default: float = RETRY_WAIT_DEFAULT) -> float:
+def _get_retry_wait(resp: Response, default: float = RETRY_WAIT_ON_RATE_LIMITING) -> float:
     retry_after: float | None = resp.headers.get("retry-after")
     if retry_after is not None:
         return max(float(retry_after), 1)

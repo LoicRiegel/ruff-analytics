@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 
-from httpx import AsyncClient, HTTPStatusError
+from httpx import AsyncClient, HTTPStatusError, RequestError
 
 from ruff_analytics.scrapper.github_api import download_blob
 
@@ -55,9 +55,17 @@ async def run_download(repository: ScrapperRepository, discovery_done_event: Eve
 
 
 async def _download_config(client: AsyncClient, repository: ScrapperRepository, config: Config) -> None:
-    logger.debug("Downloading %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
     try:
         result = await download_blob(client, config.repo_id, config.blob_sha)
+    except RequestError:
+        logger.warning(
+            "Transient network error while downloading %s/%s/%s; will retry later",
+            config.repo.owner,
+            config.repo.name,
+            config.config_path,
+            exc_info=True,
+        )
+        return
     except HTTPStatusError as error:
         logger.exception("Failed to download %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
         if error.response.status_code in PERMANENT_FAILURE_STATUSES:
