@@ -93,6 +93,7 @@ async def _start_discovery_and_download(
     discovery_repository: ScrapperRepository, download_repository: ScrapperRepository
 ) -> None:
     trigger_download_event = asyncio.Event()
+    trigger_download_event.set()
     discovery_done_event = asyncio.Event()
     await asyncio.gather(
         run_discovery(discovery_repository, trigger_download_event, discovery_done_event),
