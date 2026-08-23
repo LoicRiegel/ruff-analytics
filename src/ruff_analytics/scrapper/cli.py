@@ -47,6 +47,7 @@ def _create_engine(db_url: str) -> Engine:
 
     with engine.connect() as conn:
         conn.execute(text("PRAGMA journal_mode=WAL"))
+        conn.execute(text("PRAGMA synchronous=NORMAL"))
     return engine
 
 
