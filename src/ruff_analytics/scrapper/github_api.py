@@ -50,8 +50,8 @@ async def download_blob(client: AsyncClient, repo_id: int, blob_sha: str) -> Dow
     return DownloadResult.model_validate(response.json())
 
 
-MAX_RETRIES = 5
-RETRY_WAIT_NETWORK_ERROR = 5
+MAX_RETRIES = 3
+RETRY_WAIT_NETWORK_ERROR = 3
 RETRY_WAIT_ON_RATE_LIMITING = 60
 
 
