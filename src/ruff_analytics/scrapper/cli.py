@@ -85,7 +85,7 @@ def start() -> None:
         download_repository = ScrapperRepository(download_session)
         try:
             asyncio.run(_start_discovery_and_download(discovery_repository, download_repository))
-        except KeyboardInterrupt:
+        except* KeyboardInterrupt:
             rich.print("Scraping interrupted (can be resumed later)")
 
 
