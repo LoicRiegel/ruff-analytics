@@ -65,6 +65,7 @@ async def _download_config(client: AsyncClient, repository: ScrapperRepository, 
         logger.info("Reused cached blob for %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
         return
 
+    logger.debug("Downloading %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
     try:
         result = await download_blob(client, config.repo_id, config.blob_sha)
     except RequestError:
@@ -98,4 +99,4 @@ async def _download_config(client: AsyncClient, repository: ScrapperRepository, 
         content=result.get_content(),
         downloaded_at=result.downloaded_at,
     )
-    logger.info("Downloaded %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
+    logger.info("Saved %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
