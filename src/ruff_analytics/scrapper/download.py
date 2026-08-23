@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 5
 
 PERMANENT_FAILURE_STATUSES = {HTTPStatus.NOT_FOUND, HTTPStatus.GONE}
-MAX_CONCURRENT_DOWNLOADS = 10
+MAX_CONCURRENT_DOWNLOADS = 20
 
 
 async def run_download(repository: ScrapperRepository, discovery_done_event: Event) -> None:
@@ -55,6 +55,16 @@ async def run_download(repository: ScrapperRepository, discovery_done_event: Eve
 
 
 async def _download_config(client: AsyncClient, repository: ScrapperRepository, config: Config) -> None:
+    if repository.is_config_content_downloaded(config.blob_sha):
+        repository.save_config_content_from_existing_blob(
+            repo_id=config.repo_id,
+            config_path=config.config_path,
+            blob_sha=config.blob_sha,
+            downloaded_at=datetime.now(tz=UTC),
+        )
+        logger.info("Reused cached blob for %s/%s/%s", config.repo.owner, config.repo.name, config.config_path)
+        return
+
     try:
         result = await download_blob(client, config.repo_id, config.blob_sha)
     except RequestError:

@@ -1,8 +1,4 @@
-"""Run EXPLAIN QUERY PLAN and timing for the configs/contents join used by `scrapper status`.
-
-Also creates the covering indexes needed for that join, since `Base.metadata.create_all` only
-creates indexes for tables that don't exist yet and won't touch an already-existing database.
-"""
+"""Inspect discovery window statuses to understand remaining discovery backlog."""
 
 import os
 import time
@@ -12,10 +8,28 @@ from sqlalchemy import Engine, create_engine, text
 
 from ruff_analytics.scrapper.db import Base
 
-QUERY = r"""
-SELECT count(*) FROM configs c JOIN contents t
-  ON c.repo_id = t.repo_id AND c.config_path = t.config_path
-  WHERE t.blob_sha = c.blob_sha
+STATUS_COUNTS_QUERY = r"""
+SELECT
+    window_status,
+    count(*) AS window_count
+FROM discovery_windows
+GROUP BY window_status
+ORDER BY window_count DESC, window_status ASC
+"""
+
+BACKLOG_WINDOWS_QUERY = r"""
+SELECT
+    id,
+    config_type,
+    size_from,
+    size_to,
+    window_status,
+    result_count,
+    created_at
+FROM discovery_windows
+WHERE window_status IN ('pending', 'needs_split')
+   OR window_status NOT IN ('done', 'split', 'error')
+ORDER BY created_at ASC, id ASC
 """
 
 
@@ -28,9 +42,18 @@ def create_indexes(engine: Engine) -> None:
 def run_query(engine: Engine) -> None:
     with engine.connect() as conn:
         t_start = time.time()
-        result = conn.execute(text(QUERY)).fetchone()
+        status_counts = conn.execute(text(STATUS_COUNTS_QUERY)).fetchall()
+        backlog_windows = conn.execute(text(BACKLOG_WINDOWS_QUERY)).fetchall()
         delay = time.time() - t_start
-        print(f"Result: {result}")
+
+        print("Status counts:")
+        for status, count in status_counts:
+            print(f"- {status}: {count}")
+
+        print(f"\nBacklog rows: {len(backlog_windows)}")
+        for row in backlog_windows:
+            print(row)
+
         print(f"Took {delay:.3f}s")
 
 

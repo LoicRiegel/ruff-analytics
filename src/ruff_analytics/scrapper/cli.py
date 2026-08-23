@@ -1,19 +1,27 @@
 """Command-line interface for the ruff configuration scraper."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import rich
 from dotenv import load_dotenv
 from rich.logging import RichHandler
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session
 from typer import Typer
 
 from ruff_analytics.scrapper.db import Base, ScrapperRepository
 from ruff_analytics.scrapper.discovery import init_discovery, run_discovery
 from ruff_analytics.scrapper.download import run_download
+
+if TYPE_CHECKING:
+    import sqlite3
+
+    from sqlalchemy.pool import ConnectionPoolEntry
 
 DB_URL_ENV_VAR = "RUFF_ANALYTICS_DB"
 
@@ -28,6 +36,15 @@ def set_up_logging() -> None:
 
 def _create_engine(db_url: str) -> Engine:
     engine = create_engine(db_url, connect_args={"timeout": 5})
+
+    if engine.url.get_backend_name() == "sqlite":
+
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragmas(dbapi_connection: sqlite3.Connection, _connection_record: ConnectionPoolEntry) -> None:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     with engine.connect() as conn:
         conn.execute(text("PRAGMA journal_mode=WAL"))
     return engine

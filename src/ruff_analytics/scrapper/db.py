@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -57,15 +59,23 @@ class Config(Base):
     repo: Mapped[Repo] = relationship(lazy="joined")
 
 
+class Blob(Base):
+    __tablename__ = "blobs"
+
+    blob_sha: Mapped[str] = mapped_column(String(40), primary_key=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    contents: Mapped[list[Content]] = relationship(back_populates="blob")
+
+
 class Content(Base):
     __tablename__ = "contents"
     __table_args__ = (Index("idx_contents_lookup", "repo_id", "config_path", "blob_sha"),)
 
     repo_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     config_path: Mapped[str] = mapped_column(String, primary_key=True)
-    blob_sha: Mapped[str] = mapped_column(String(40), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    blob_sha: Mapped[str] = mapped_column(ForeignKey("blobs.blob_sha"), nullable=False)
     downloaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    blob: Mapped[Blob] = relationship(back_populates="contents")
 
 
 class DownloadFailure(Base):
@@ -159,14 +169,9 @@ class ScrapperRepository:
         self, repo_id: int, config_path: str, blob_sha: str, content: str, downloaded_at: datetime
     ) -> None:
         """Upsert a downloaded config's content, and commit."""
+        self._session.merge(Blob(blob_sha=blob_sha, content=content))
         self._session.merge(
-            Content(
-                repo_id=repo_id,
-                config_path=config_path,
-                blob_sha=blob_sha,
-                content=content,
-                downloaded_at=downloaded_at,
-            )
+            Content(repo_id=repo_id, config_path=config_path, blob_sha=blob_sha, downloaded_at=downloaded_at)
         )
         self._session.commit()
 
@@ -182,6 +187,20 @@ class ScrapperRepository:
                 status_code=status_code,
                 failed_at=failed_at,
             )
+        )
+        self._session.commit()
+
+    def is_config_content_downloaded(self, blob_sha: str) -> bool:
+        """Return whether this blob_sha already exists in local blob storage."""
+        stmt = select(Blob.blob_sha).where(Blob.blob_sha == blob_sha).limit(1)
+        return self._session.execute(stmt).scalar_one_or_none() is not None
+
+    def save_config_content_from_existing_blob(
+        self, repo_id: int, config_path: str, blob_sha: str, downloaded_at: datetime
+    ) -> None:
+        """Upsert a config->blob mapping when blob content is already stored locally."""
+        self._session.merge(
+            Content(repo_id=repo_id, config_path=config_path, blob_sha=blob_sha, downloaded_at=downloaded_at)
         )
         self._session.commit()
 
