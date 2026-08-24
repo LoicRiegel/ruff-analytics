@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from httpx import AsyncClient, HTTPStatusError, RequestError
 
-from ruff_analytics.scrapper.github_api import download_blob
+from ruff_analytics.scrapper.github_api import create_client, download_blob
 
 if TYPE_CHECKING:
     from ruff_analytics.scrapper.db import Config, ScrapperRepository
@@ -35,7 +35,7 @@ async def run_download(repository: ScrapperRepository, discovery_done_event: Eve
         async with semaphore:
             await _download_config(client, repository, config)
 
-    async with AsyncClient() as client:
+    async with create_client() as client:
         while True:
             pending = repository.get_discovered_configs_to_download()
             if not pending:

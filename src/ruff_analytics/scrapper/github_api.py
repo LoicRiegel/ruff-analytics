@@ -5,12 +5,12 @@ import time
 from http import HTTPStatus
 from typing import TYPE_CHECKING, assert_never
 
-from httpx import RequestError
+from httpx import AsyncClient, AsyncHTTPTransport, Limits, RequestError, Timeout
 
 from ruff_analytics.scrapper.models import DiscoveryResult, DownloadResult
 
 if TYPE_CHECKING:
-    from httpx import AsyncClient, Request, Response
+    from httpx import Request, Response
 
     from ruff_analytics.scrapper.config_type import ConfigType
     from ruff_analytics.scrapper.size_range import SizeRange
@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 
 GITHUB_SEARCH_URL = "https://api.github.com/search/code"
 RESULTS_PER_PAGE = 100
+
+
+def create_client() -> AsyncClient:
+    """Create an async client tuned to reduce spurious network errors under concurrent load."""
+    client_timeout = Timeout(30.0, connect=10.0)
+    client_limits = Limits(max_connections=100, max_keepalive_connections=20)
+    client_transport = AsyncHTTPTransport(retries=2)
+    return AsyncClient(timeout=client_timeout, limits=client_limits, transport=client_transport)
 
 
 async def discover_configs(
@@ -51,7 +59,7 @@ async def download_blob(client: AsyncClient, repo_id: int, blob_sha: str) -> Dow
 
 
 MAX_RETRIES = 3
-RETRY_WAIT_NETWORK_ERROR = 3
+RETRY_WAIT_NETWORK_ERROR = 10
 RETRY_WAIT_ON_RATE_LIMITING = 60
 
 

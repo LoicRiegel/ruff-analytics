@@ -3,14 +3,16 @@
 import logging
 from typing import TYPE_CHECKING
 
-from httpx import AsyncClient, HTTPStatusError, RequestError
+from httpx import HTTPStatusError, RequestError
 
-from ruff_analytics.scrapper.github_api import RESULTS_PER_PAGE, discover_configs
+from ruff_analytics.scrapper.github_api import RESULTS_PER_PAGE, create_client, discover_configs
 from ruff_analytics.scrapper.size_range import SizeRange, split_size_range
 
 if TYPE_CHECKING:
     import asyncio
     from datetime import datetime
+
+    from httpx import AsyncClient
 
     from ruff_analytics.scrapper.config_type import ConfigType
     from ruff_analytics.scrapper.db import ScanWindow, ScrapperRepository
@@ -34,7 +36,7 @@ async def init_discovery(repository: ScrapperRepository) -> None:
 
 async def run_discovery(repository: ScrapperRepository, discovery_done_event: asyncio.Event) -> None:
     """Start or resume discovery — processes all pending windows until none remain."""
-    async with AsyncClient() as client:
+    async with create_client() as client:
         while window := repository.next_discovery_window_to_process():
             await _process_window(client, repository, window)
     discovery_done_event.set()
